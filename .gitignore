@@ -39,9 +39,8 @@ Thirdparty/g2o/config.h
 Thirdparty/g2o/lib/
 Vocabulary/ORBvoc.txt
 build/
-
 lib/
-
+.idea/
 cmake_modules/
 cmake-build-debug/
 .vscode/
