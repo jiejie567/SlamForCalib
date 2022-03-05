@@ -1241,7 +1241,9 @@ void LocalMapping::KeyFrameCulling()
     float redundant_th;
     // 非IMU模式时
     if(!mbInertial)
-        redundant_th = 0.9;
+//        redundant_th = 0.9;
+        redundant_th = 0.97;
+
     else if (mbMonocular)	// 单目+imu 时
         redundant_th = 0.9;
     else	// 双目+imu时
