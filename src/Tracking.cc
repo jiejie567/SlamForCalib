@@ -1488,7 +1488,6 @@ void Tracking::PreintegrateIMU()
             unique_lock<mutex> lock(mMutexImuQueue);
             if(!mlQueueImuData.empty())
             {
-                // 拿到第一个imu数据作为起始数据
                 IMU::Point* m = &mlQueueImuData.front();
                 cout.precision(17);
                 // imu起始数据会比当前帧的前一帧时间戳早,如果相差0.001则舍弃这个imu数据
@@ -3505,7 +3504,7 @@ bool Tracking::NeedNewKeyFrame()
     // mnLastRelocFrameId是最近一次重定位帧的ID
     // mMaxFrames等于图像输入的帧率
     //  Step 3：如果距离上一次重定位比较近，并且关键帧数目超出最大限制，不插入关键帧
-    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && nKFs>mMaxFrames)
+    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames/3 && nKFs>mMaxFrames)
     {
         return false;
     }
@@ -3549,22 +3548,27 @@ bool Tracking::NeedNewKeyFrame()
     // 双目或RGBD情况下：跟踪到的地图点中近点太少 同时 没有跟踪到的三维点太多，可以插入关键帧了
     // 单目时，为false
     bool bNeedToInsertClose;
-    bNeedToInsertClose = (nTrackedClose<100) && (nNonTrackedClose>70);
+//    bNeedToInsertClose = (nTrackedClose<100) && (nNonTrackedClose>70);
+    bNeedToInsertClose = (nTrackedClose<150) && (nNonTrackedClose>30);
 
     // Step 7：决策是否需要插入关键帧
     // Thresholds
     // Step 7.1：设定比例阈值，当前帧和参考关键帧跟踪到点的比例，比例越大，越倾向于增加关键帧
-    float thRefRatio = 0.75f;
-    
+//    float thRefRatio = 0.75f;
+    float thRefRatio = 0.9f;
+
     // 关键帧只有一帧，那么插入关键帧的阈值设置的低一点，插入频率较低
     if(nKFs<2)
-        thRefRatio = 0.4f;
+//        thRefRatio = 0.4f;
+        thRefRatio = 0.9f;
 
     //单目情况下插入关键帧的频率很高    
     if(mSensor==System::MONOCULAR)
         thRefRatio = 0.9f;
 
-    if(mpCamera2) thRefRatio = 0.75f;
+    if(mpCamera2)
+//        thRefRatio = 0.75f;
+        thRefRatio = 0.9f;
     //单目+IMU情况下如果，匹配内点数目超过350，插入关键帧的频率可以适当降低  
     if(mSensor==System::IMU_MONOCULAR)
     {
@@ -3576,10 +3580,12 @@ bool Tracking::NeedNewKeyFrame()
 
     // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
     // Step 7.2：很长时间没有插入关键帧，可以插入
-    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
-    // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
+//    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
+    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames/3;
+
+        // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
     // Step 7.3：满足插入关键帧的最小间隔并且localMapper处于空闲状态，可以插入
-    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames) && bLocalMappingIdle);
+    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames/3) && bLocalMappingIdle);
     //Condition 1c: tracking is weak
 	// Step 7.4：在双目，RGB-D的情况下当前帧跟踪到的点比参考关键帧的0.25倍还少，或者满足bNeedToInsertClose
     const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO &&  //只考虑在纯双目，RGB-D的情况
@@ -3596,8 +3602,9 @@ bool Tracking::NeedNewKeyFrame()
     {
         if (mSensor==System::IMU_MONOCULAR)
         {
-            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.5)
-                c3 = true;
+//            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.5)
+            if ((mCurrentFrame.mTimeStamp-mpLastKeyFrame->mTimeStamp)>=0.2)
+                    c3 = true;
         }
         else if (mSensor==System::IMU_STEREO)
         {
