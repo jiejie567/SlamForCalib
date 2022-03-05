@@ -3504,7 +3504,7 @@ bool Tracking::NeedNewKeyFrame()
     // mnLastRelocFrameId是最近一次重定位帧的ID
     // mMaxFrames等于图像输入的帧率
     //  Step 3：如果距离上一次重定位比较近，并且关键帧数目超出最大限制，不插入关键帧
-    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames/3 && nKFs>mMaxFrames)
+    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames/2 && nKFs>mMaxFrames)
     {
         return false;
     }
@@ -3581,11 +3581,11 @@ bool Tracking::NeedNewKeyFrame()
     // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
     // Step 7.2：很长时间没有插入关键帧，可以插入
 //    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
-    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames/3;
+    const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames/2;
 
         // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
     // Step 7.3：满足插入关键帧的最小间隔并且localMapper处于空闲状态，可以插入
-    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames/3) && bLocalMappingIdle);
+    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames/2) && bLocalMappingIdle);
     //Condition 1c: tracking is weak
 	// Step 7.4：在双目，RGB-D的情况下当前帧跟踪到的点比参考关键帧的0.25倍还少，或者满足bNeedToInsertClose
     const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO &&  //只考虑在纯双目，RGB-D的情况

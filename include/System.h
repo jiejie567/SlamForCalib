@@ -71,7 +71,7 @@ public:
         th = _th;
     }
 };
-
+class Optimizer;
 class Viewer;
 class FrameDrawer;
 class MapDrawer;

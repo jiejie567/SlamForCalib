@@ -490,7 +490,7 @@ void LoopClosing::RunMerge()
     cout<< "总共检测到融合的次数: "<< nMergeTimes << endl;
     cout<<"开始总优化"<<endl;
     int nmatchedFinal = 0;
-    nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, mvvpMatches1s,mSold_new,50,mbFixScale);
+    nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, mvvpMatches1s,mSold_new,15,mbFixScale);
     cout << "最终匹配点数: "<<nmatchedFinal<<endl;
     cout<<"两个地图坐标系的关系: "<<endl<<Converter::toCvMat(mSold_new)<<endl<<endl;
 }
