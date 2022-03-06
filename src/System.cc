@@ -821,6 +821,7 @@ Atlas* System::GetAtlas()
 
 void System::MergeSLAMs(System* pSLAM2)
 {
+    cout<<"开始两个地图的全局BA"<<endl;
     Optimizer::GlobalBundleAdjustemnt(mpAtlas->GetCurrentMap(),20);
     Optimizer::GlobalBundleAdjustemnt(pSLAM2->mpAtlas->GetCurrentMap(),20);
     mpAtlas->AddNewMap(mpLoopCloser,pSLAM2);

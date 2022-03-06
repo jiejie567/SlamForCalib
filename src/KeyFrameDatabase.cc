@@ -720,8 +720,10 @@ void KeyFrameDatabase::DetectNBestCandidates(KeyFrame *pKF, vector<KeyFrame*> &v
         if((*lit)->mnPlaceRecognitionWords>maxCommonWords)
             maxCommonWords=(*lit)->mnPlaceRecognitionWords;
     }
-    // 取0.8倍为阀值
-    int minCommonWords = maxCommonWords*0.8f;
+    // // 取0.8倍为阀值
+    // int minCommonWords = maxCommonWords*0.8f;
+        // 取0.5倍为阀值
+    int minCommonWords = maxCommonWords*0.5f;
     // 这里的pair是 <相似度,候选帧的指针> : 记录所有大于minCommonWords的候选帧与当前关键帧的相似度
     list<pair<float,KeyFrame*> > lScoreAndMatch;
     // 只是个统计变量,貌似没有用到
