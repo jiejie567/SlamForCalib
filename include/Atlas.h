@@ -88,7 +88,6 @@ public:
     void clearAtlas();
 
     Map* GetCurrentMap();
-
     void SetMapBad(Map* pMap);
     void RemoveBadMaps();
 

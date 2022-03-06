@@ -75,6 +75,15 @@ cv::Mat Converter::toCvMat(const g2o::Sim3 &Sim3)
 	// 然后构造cv::Mat格式下的仿射矩阵
     return toCvSE3(s*eigR,eigt);
 }
+cv::Mat Converter::toCvMatWithoutS(const g2o::Sim3 &Sim3)
+{
+    // 首先将仿射矩阵的旋转部分转换成为Eigen下的矩阵格式
+    Eigen::Matrix3d eigR = Sim3.rotation().toRotationMatrix();
+    ///对于仿射矩阵的平移部分也是要转换成为Eigen下的矩阵格式
+    Eigen::Vector3d eigt = Sim3.translation();
+
+    return toCvSE3(eigR,eigt);
+}
 
 //Eigen::Matrix<double,4,4> -> cv::Mat，用于变换矩阵T的中间转换
 cv::Mat Converter::toCvMat(const Eigen::Matrix<double,4,4> &m)

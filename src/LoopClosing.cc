@@ -334,6 +334,14 @@ void LoopClosing::RunMerge()
     // 线程主循环
     int nMergeTimes = 0;
     int nKFs = mlpLoopKeyFrameQueue.size();
+    KeyFrame* pFinalKFInMerge = mlpLoopKeyFrameQueue.back();
+    KeyFrame* pFinalKFInCurr = mpAtlas->GetCurrentMap()->GetAllKeyFrames().back();
+
+    cv::Mat Tmw_f = pFinalKFInMerge->GetPose();//f表示最后一帧
+    g2o::Sim3 gSmw_f(Converter::toMatrix3d(Tmw_f.rowRange(0, 3).colRange(0, 3)),Converter::toVector3d(Tmw_f.rowRange(0, 3).col(3)),1.0);
+
+    cv::Mat Tcw_f = pFinalKFInCurr->GetPose();
+    g2o::Sim3 gScw_f(Converter::toMatrix3d(Tcw_f.rowRange(0, 3).colRange(0, 3)),Converter::toVector3d(Tcw_f.rowRange(0, 3).col(3)),1.0);
     while(CheckNewKeyFrames())
     {
         // cout<<mlpLoopKeyFrameQueue.size()<<endl;
@@ -396,39 +404,9 @@ void LoopClosing::RunMerge()
 
                     // 记录焊接变换(Sim3) T_w2_w1 , 这个量实际是两个地图坐标系的关系 T_w2_w1 = T_w2_c * T_c_w1
                     mSold_new = (gSw2c * gScw1);
-//                    mSold_new = gSw2c;
-//                    cout<<"两个地图坐标系的关系: "<<endl<<mSold_new<<endl<<endl;
-                    cout<<"两个地图坐标系的关系: "<<endl<<Converter::toCvMat(mSold_new)<<endl<<endl;
-
-                    // 如果是imu模式
-                    if(mpCurrentKF->GetMap()->IsInertial() && mpMergeMatchedKF->GetMap()->IsInertial())
-                    {
-                        // 如果尺度变换太大, 则放弃融合
-                        if(mSold_new.scale()<0.90||mSold_new.scale()>1.1){
-                            mpMergeLastCurrentKF->SetErase();
-                            mpMergeMatchedKF->SetErase();
-                            mnMergeNumCoincidences = 0;
-                            mvpMergeMatchedMPs.clear();
-                            mvpMergeMPs.clear();
-                            mnMergeNumNotFound = 0;
-                            mbMergeDetected = false;
-                            Verbose::PrintMess("scale bad estimated. Abort merging", Verbose::VERBOSITY_NORMAL);
-                            continue;
-                        }
-                        // If inertial, force only yaw
-                        // 如果是imu模式,强制将焊接变换的的 roll 和 pitch 设为0
-                        if ((mpTracker->mSensor==System::IMU_MONOCULAR ||mpTracker->mSensor==System::IMU_STEREO) &&
-                            mpCurrentKF->GetMap()->GetIniertialBA1()) // TODO, maybe with GetIniertialBA1
-                        {
-                            Eigen::Vector3d phi = LogSO3(mSold_new.rotation().toRotationMatrix());
-                            phi(0)=0;
-                            phi(1)=0;
-                            mSold_new = g2o::Sim3(ExpSO3(phi),mSold_new.translation(),1.0);
-                        }
-                    }
-
-                    // 这个变量没有用到
-                    mg2oMergeSmw = gSmw2 * gSw2c * gScw1;
+                    g2o::Sim3 gFinalTFTrans = gSmw_f*mSold_new*(gScw_f.inverse());
+                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new)<<endl<<endl;
+                    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
 
                     // 更新mg2oMergeScw
                     mg2oMergeScw = mg2oMergeSlw;
@@ -492,7 +470,10 @@ void LoopClosing::RunMerge()
     int nmatchedFinal = 0;
     nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, mvvpMatches1s,mSold_new,20,mbFixScale);
     cout << "最终匹配点数: "<<nmatchedFinal<<endl;
-    cout<<"两个地图坐标系的关系: "<<endl<<Converter::toCvMat(mSold_new)<<endl<<endl;
+    g2o::Sim3 gFinalTFTrans = gSmw_f*mSold_new*(gScw_f.inverse());
+    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
+    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
+
 }
 // 将某个关键帧加入到回环检测的过程中,由局部建图线程调用
 void LoopClosing::InsertKeyFrame(KeyFrame *pKF)
