@@ -978,7 +978,7 @@ bool Tracking::ParseCamParamFile(cv::FileStorage &fSettings)
         fps=30;
 
     // Max/Min Frames to insert keyframes and to check relocalisation
-    mMinFrames = 0;
+    mMinFrames = fps/3;
     mMaxFrames = fps;
 
     cout << "- fps: " << fps << endl;
@@ -3585,7 +3585,7 @@ bool Tracking::NeedNewKeyFrame()
 
         // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
     // Step 7.3：满足插入关键帧的最小间隔并且localMapper处于空闲状态，可以插入
-    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames/2) && bLocalMappingIdle);
+    const bool c1b = ((mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames) && bLocalMappingIdle);
     //Condition 1c: tracking is weak
 	// Step 7.4：在双目，RGB-D的情况下当前帧跟踪到的点比参考关键帧的0.25倍还少，或者满足bNeedToInsertClose
     const bool c1c = mSensor!=System::MONOCULAR && mSensor!=System::IMU_MONOCULAR && mSensor!=System::IMU_STEREO &&  //只考虑在纯双目，RGB-D的情况
@@ -3621,8 +3621,10 @@ bool Tracking::NeedNewKeyFrame()
         c4=false;
 
     // 相比ORB-SLAM2多了c3,c4
-    if(((c1a||c1b||c1c) && c2)||c3 ||c4)
-    {
+//    if(((c1a||c1b||c1c) && c2)||c3 ||c4)
+    if(((c1a||c1c) && c2)||c3||c4||c1b)
+
+        {
         // If the mapping accepts keyframes, insert keyframe.
         // Otherwise send a signal to interrupt BA
         // Step 7.6：local mapping空闲时可以直接插入，不空闲的时候要根据情况插入

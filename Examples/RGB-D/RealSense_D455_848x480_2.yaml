@@ -41,9 +41,9 @@ Camera.fps: 15
 
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
-Camera.bf: 40.0
+Camera.bf: 95.0
 # Close/Far threshold. Baseline times.
-ThDepth: 40.0
+ThDepth: 10.0
 Stereo.b: 0.0745
 
 # Depth map values factor
