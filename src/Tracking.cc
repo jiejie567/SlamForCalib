@@ -3818,6 +3818,157 @@ void Tracking::CreateNewKeyFrame()
     //cout  << "end creating new KF" << endl;
 }
 
+/**
+ * @brief 创建新的关键帧
+ * 对于非单目的情况，同时创建新的MapPoints
+ *
+ * Step 1：将当前帧构造成关键帧
+ * Step 2：将当前关键帧设置为当前帧的参考关键帧
+ * Step 3：对于双目或rgbd摄像头，为当前帧生成新的MapPoints
+ */
+    void Tracking::CreateFinalKeyFrame()
+    {
+        cout<<"建立最后一帧为关键帧"<<endl;
+        // Step 1：将当前帧构造成关键帧
+        KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
+
+        if(mpAtlas->isImuInitialized())
+            pKF->bImu = true;
+
+        pKF->SetNewBias(mCurrentFrame.mImuBias);
+        // Step 2：将当前关键帧设置为当前帧的参考关键帧
+        // 在UpdateLocalKeyFrames函数中会将与当前关键帧共视程度最高的关键帧设定为当前帧的参考关键帧
+        mpReferenceKF = pKF;
+        mCurrentFrame.mpReferenceKF = pKF;
+
+        if(mpLastKeyFrame)
+        {
+            pKF->mPrevKF = mpLastKeyFrame;
+            mpLastKeyFrame->mNextKF = pKF;
+        }
+        else
+            Verbose::PrintMess("No last KF in KF creation!!", Verbose::VERBOSITY_NORMAL);
+
+        // Reset preintegration from last KF (Create new object)
+        if (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO)
+        {
+            mpImuPreintegratedFromLastKF = new IMU::Preintegrated(pKF->GetImuBias(),pKF->mImuCalib);
+        }
+        // 这段代码和 Tracking::UpdateLastFrame 中的那一部分代码功能相同
+        // Step 3：对于双目或rgbd摄像头，为当前帧生成新的地图点；单目无操作
+        if(mSensor!=System::MONOCULAR && mSensor != System::IMU_MONOCULAR) // TODO check if incluide imu_stereo
+        {
+            // 根据Tcw计算mRcw、mtcw和mRwc、mOw
+            mCurrentFrame.UpdatePoseMatrices();
+            // cout << "create new MPs" << endl;
+            // We sort points by the measured depth by the stereo/RGBD sensor.
+            // We create all those MapPoints whose depth < mThDepth.
+            // If there are less than 100 close points we create the 100 closest.
+            int maxPoint = 100;
+            if(mSensor == System::IMU_STEREO)
+                maxPoint = 100;
+            // Step 3.1：得到当前帧有深度值的特征点（不一定是地图点）
+            vector<pair<float,int> > vDepthIdx;
+            int N = (mCurrentFrame.Nleft != -1) ? mCurrentFrame.Nleft : mCurrentFrame.N;
+            vDepthIdx.reserve(mCurrentFrame.N);
+            for(int i=0; i<N; i++)
+            {
+                float z = mCurrentFrame.mvDepth[i];
+                if(z>0)
+                {
+                    // 第一个元素是深度,第二个元素是对应的特征点的id
+                    vDepthIdx.push_back(make_pair(z,i));
+                }
+            }
+
+            if(!vDepthIdx.empty())
+            {
+                // Step 3.2：按照深度从小到大排序
+                sort(vDepthIdx.begin(),vDepthIdx.end());
+
+                // Step 3.3：从中找出不是地图点的生成临时地图点
+                // 处理的近点的个数
+                int nPoints = 0;
+                for(size_t j=0; j<vDepthIdx.size();j++)
+                {
+                    int i = vDepthIdx[j].second;
+
+                    bool bCreateNew = false;
+
+                    // 如果这个点对应在上一帧中的地图点没有,或者创建后就没有被观测到,那么就生成一个临时的地图点
+                    MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
+                    if(!pMP)
+                        bCreateNew = true;
+                    else if(pMP->Observations()<1)
+                    {
+                        bCreateNew = true;
+                        mCurrentFrame.mvpMapPoints[i] = static_cast<MapPoint*>(NULL);
+                    }
+
+                    // 如果需要就新建地图点，这里的地图点不是临时的，是全局地图中新建地图点，用于跟踪
+                    if(bCreateNew)
+                    {
+                        cv::Mat x3D;
+
+                        if(mCurrentFrame.Nleft == -1){
+                            x3D = mCurrentFrame.UnprojectStereo(i);
+                        }
+                        else{
+                            x3D = mCurrentFrame.UnprojectStereoFishEye(i);
+                        }
+
+                        MapPoint* pNewMP = new MapPoint(x3D,pKF,mpAtlas->GetCurrentMap());
+                        // 这些添加属性的操作是每次创建MapPoint后都要做的
+                        pNewMP->AddObservation(pKF,i);
+
+                        //Check if it is a stereo observation in order to not
+                        //duplicate mappoints
+                        if(mCurrentFrame.Nleft != -1 && mCurrentFrame.mvLeftToRightMatch[i] >= 0){
+                            mCurrentFrame.mvpMapPoints[mCurrentFrame.Nleft + mCurrentFrame.mvLeftToRightMatch[i]]=pNewMP;
+                            pNewMP->AddObservation(pKF,mCurrentFrame.Nleft + mCurrentFrame.mvLeftToRightMatch[i]);
+                            pKF->AddMapPoint(pNewMP,mCurrentFrame.Nleft + mCurrentFrame.mvLeftToRightMatch[i]);
+                        }
+
+                        pKF->AddMapPoint(pNewMP,i);
+                        pNewMP->ComputeDistinctiveDescriptors();
+                        pNewMP->UpdateNormalAndDepth();
+                        mpAtlas->AddMapPoint(pNewMP);
+
+                        mCurrentFrame.mvpMapPoints[i]=pNewMP;
+                        nPoints++;
+                    }
+                    else
+                    {
+                        // 因为从近到远排序，记录其中不需要创建地图点的个数
+                        nPoints++;
+                    }
+
+                    // Step 3.4：停止新建地图点必须同时满足以下条件：
+                    // 1、当前的点的深度已经超过了设定的深度阈值（35倍基线）
+                    // 2、nPoints已经超过100个点，说明距离比较远了，可能不准确，停掉退出
+                    if(vDepthIdx[j].first>mThDepth && nPoints>maxPoint)
+                    {
+                        break;
+                    }
+                }
+
+                Verbose::PrintMess("new mps for stereo KF: " + to_string(nPoints), Verbose::VERBOSITY_NORMAL);
+
+            }
+        }
+
+        // Step 4：插入关键帧
+        // 关键帧插入到列表 mlNewKeyFrames中，等待local mapping线程临幸
+        mpLocalMapper->InsertKeyFrame(pKF);
+
+        // 插入好了，允许局部建图停止
+        mpLocalMapper->SetNotStop(false);
+
+        // 当前帧成为新的关键帧，更新
+        mnLastKeyFrameId = mCurrentFrame.mnId;
+        mpLastKeyFrame = pKF;
+        //cout  << "end creating new KF" << endl;
+    }
 
 /**
  * @brief 用局部地图点进行投影匹配，得到更多的匹配关系

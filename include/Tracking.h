@@ -166,6 +166,7 @@ public:
 
     // 获取局部地图点
     vector<MapPoint*> GetLocalMapMPS();
+    void CreateFinalKeyFrame(); //把最后一帧图片建立为关键帧
 
     bool mbWriteStats;
 

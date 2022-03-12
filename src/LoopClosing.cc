@@ -474,6 +474,10 @@ void LoopClosing::RunMerge()
     cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
     cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
 
+    nmatchedFinal = Optimizer::OptimizeSim3FirstFinalForCalibr(mvpKF1s,Tcw_f, mvpKF2s,Tmw_f, mvvpMatches1s,mSold_new,20,mbFixScale);
+    cout << "最终匹配点数: "<<nmatchedFinal<<endl;
+    cout<<"两个地图以首尾两帧共同的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
+
 }
 // 将某个关键帧加入到回环检测的过程中,由局部建图线程调用
 void LoopClosing::InsertKeyFrame(KeyFrame *pKF)

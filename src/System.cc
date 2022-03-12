@@ -451,7 +451,7 @@ void System::Shutdown()
 
     if(mpViewer)
         pangolin::BindToContext("ORB-SLAM2: Map Viewer");
-
+    mpTracker->CreateFinalKeyFrame();//建立最后一帧为关键帧
 #ifdef REGISTER_TIMES
     mpTracker->PrintTimeStats();
 #endif
