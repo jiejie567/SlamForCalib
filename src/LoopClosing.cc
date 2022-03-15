@@ -404,8 +404,8 @@ void LoopClosing::RunMerge()
 
                     // 记录焊接变换(Sim3) T_w2_w1 , 这个量实际是两个地图坐标系的关系 T_w2_w1 = T_w2_c * T_c_w1
                     mSold_new = (gSw2c * gScw1);
-                    g2o::Sim3 gFinalTFTrans = gSmw_f*mSold_new*(gScw_f.inverse());
-                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new)<<endl<<endl;
+                    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
+                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
                     cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
 
                     // 更新mg2oMergeScw
@@ -470,7 +470,7 @@ void LoopClosing::RunMerge()
     int nmatchedFinal = 0;
     nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, mvvpMatches1s,mSold_new,20,mbFixScale);
     cout << "最终匹配点数: "<<nmatchedFinal<<endl;
-    g2o::Sim3 gFinalTFTrans = gSmw_f*mSold_new*(gScw_f.inverse());
+    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
     cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
     cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
 

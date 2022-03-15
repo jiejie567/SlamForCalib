@@ -3589,8 +3589,6 @@ namespace ORB_SLAM3
         int nCorrespondences = 0;
         int nNumberOfMergeKF = vpKF1s.size();
         int IdOff = 0;
-        int nAllPt = 0;
-        int nUsefulPt = 0;
         vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12;        // pKF2对应的地图点到pKF1的投影边 的集合
         vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21; // pKF1对应的地图点到pKF2的投影边 的集合
         vector<vector<size_t>> vvnIndexEdge;                         //边的索引的集合
@@ -3598,8 +3596,6 @@ namespace ORB_SLAM3
         vvpEdges21.reserve(2*nNumberOfMergeKF);
         vvnIndexEdge.reserve(2*nNumberOfMergeKF);
 
-        // 辅助容器,避免重复添加地图点
-        set<MapPoint*> spMapPoints;
 
         for (size_t idx = 0; idx < nNumberOfMergeKF; idx++)
         {
@@ -3630,15 +3626,6 @@ namespace ORB_SLAM3
                 // pMP1和pMP2是匹配的地图点
                 MapPoint *pMP1 = vpMapPoints1[i];
                 MapPoint *pMP2 = vpMatches1[i];
-                nAllPt++;
-                if(spMapPoints.find(pMP1) == spMapPoints.end())
-                {
-                    // 辅助容器用来记录点是否已经添加
-                    spMapPoints.insert(pMP1);
-                    nUsefulPt++;
-                    // 把地图点和对应关键帧记录下来
-                } else
-                    continue;
 
                 // 保证顶点的id能够错开
                 const int id1 = 2 * (i+IdOff)+1;
@@ -3737,15 +3724,12 @@ namespace ORB_SLAM3
             vvpEdges21.push_back(vpEdges21);
             vvnIndexEdge.push_back(vnIndexEdge);
         }
-
-        cout<<"总点数为： "<<nAllPt<<endl;
-        cout<<"去重后总点数为： "<<nUsefulPt<<endl;
         // Optimize!
         // Step 5：g2o开始优化，先迭代5次
         optimizer.initializeOptimization();
         optimizer.optimize(500);
 
-        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
+//        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
         cout<<"匹配点有："<<nCorrespondences<<endl;
 
 
@@ -3799,42 +3783,42 @@ namespace ORB_SLAM3
 //        }
 
 
-        // Optimize again only with inliers
-        // Step 7：再次g2o优化 剔除后剩下的边
-        optimizer.initializeOptimization();
-        optimizer.optimize(nMoreIterations);
-
-        // 统计第二次优化之后,这些匹配点中是内点的个数
-        int nIn = 0;
-        for(size_t index = 0; index < nNumberOfMergeKF; index++)
-        {
-
-            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
-            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
-            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-            for (size_t i = 0; i < vpEdges12.size(); i++)
-            {
-                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
-                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
-                if (!e12 || !e21)
-                    continue;
-
-                if (e12->chi2() > th2 || e21->chi2() > th2)
-                {
-                    size_t idx = vnIndexEdge[i];
-                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-                }
-                else
-                    nIn++;
-            }
-        }    
-        // Recover optimized Sim3
+//        // Optimize again only with inliers
+//        // Step 7：再次g2o优化 剔除后剩下的边
+//        optimizer.initializeOptimization();
+//        optimizer.optimize(nMoreIterations);
+//
+//        // 统计第二次优化之后,这些匹配点中是内点的个数
+//        int nIn = 0;
+//        for(size_t index = 0; index < nNumberOfMergeKF; index++)
+//        {
+//
+//            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
+//            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
+//            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+//            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
+//            for (size_t i = 0; i < vpEdges12.size(); i++)
+//            {
+//                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
+//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
+//                if (!e12 || !e21)
+//                    continue;
+//
+//                if (e12->chi2() > th2 || e21->chi2() > th2)
+//                {
+//                    size_t idx = vnIndexEdge[i];
+//                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
+//                }
+//                else
+//                    nIn++;
+//            }
+//        }
+//        // Recover optimized Sim3
         // Step 8：得到优化后的结果
         g2o::VertexSim3Expmap *vSim3_recov = static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0));
         g2oS12 = vSim3_recov->estimate();
-        cout<<"内点数量为 "<<nIn<<endl;
-        return nIn;
+//        cout<<"内点数量为 "<<nIn<<endl;
+        return nCorrespondences-nBad;
     }
 
     int Optimizer::OptimizeSim3FirstFinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, const vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
@@ -3886,8 +3870,6 @@ namespace ORB_SLAM3
         int nCorrespondences = 0;
         int nNumberOfMergeKF = vpKF1s.size();
         int IdOff = 0;
-        int nAllPt = 0;
-        int nUsefulPt = 0;
         vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12;        // pKF2对应的地图点到pKF1的投影边 的集合
         vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21; // pKF1对应的地图点到pKF2的投影边 的集合
         vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12f;        // pKF2对应的地图点到pKF1的投影边 的集合
@@ -3904,7 +3886,6 @@ namespace ORB_SLAM3
         const cv::Mat Rmfw = FinalPose2.rowRange(0,3).colRange(0,3).clone();
         const cv::Mat tmfw = FinalPose2.rowRange(0,3).col(3).clone();
         // 辅助容器,避免重复添加地图点
-        set<MapPoint*> spMapPoints;
 
         for (size_t idx = 0; idx < nNumberOfMergeKF; idx++)
         {
@@ -3947,15 +3928,7 @@ namespace ORB_SLAM3
                 // pMP1和pMP2是匹配的地图点
                 MapPoint *pMP1 = vpMapPoints1[i];
                 MapPoint *pMP2 = vpMatches1[i];
-                nAllPt++;
-                if(spMapPoints.find(pMP1) == spMapPoints.end())
-                {
-                    // 辅助容器用来记录点是否已经添加
-                    spMapPoints.insert(pMP1);
-                    nUsefulPt++;
-                    // 把地图点和对应关键帧记录下来
-                } else
-                    continue;
+
 
                 // 保证顶点的id能够错开
                 const int id1 = 4 * (i+IdOff)+1;
@@ -4114,14 +4087,12 @@ namespace ORB_SLAM3
             vvnIndexEdge.push_back(vnIndexEdge);
         }
 
-        cout<<"总点数为： "<<nAllPt<<endl;
-        cout<<"去重后总点数为： "<<nUsefulPt<<endl;
         // Optimize!
         // Step 5：g2o开始优化，先迭代5次
         optimizer.initializeOptimization();
         optimizer.optimize(500);
 
-        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
+//        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
         cout<<"匹配点有："<<nCorrespondences<<endl;
 
 
@@ -4173,43 +4144,43 @@ namespace ORB_SLAM3
         }
         cout<<"坏点有："<<nBad<<endl;
 
-        // Optimize again only with inliers
-        // Step 7：再次g2o优化 剔除后剩下的边
-        optimizer.initializeOptimization();
-        optimizer.optimize(nMoreIterations);
-
-        // 统计第二次优化之后,这些匹配点中是内点的个数
-        int nIn = 0;
-        for(size_t index = 0; index < nNumberOfMergeKF; index++)
-        {
-
-            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
-            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
-            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-            for (size_t i = 0; i < vpEdges12.size(); i++)
-            {
-                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
-                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
-                g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12[i];
-                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21[i];
-                if (!e12 || !e21 || !e12f || !e21f)
-                    continue;
-
-                if (e12->chi2() > th2 || e21->chi2() > th2 || e12f->chi2() > th2 || e21f->chi2() > th2)
-                {
-                    size_t idx = vnIndexEdge[i];
-                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-                }
-                else
-                    nIn++;
-            }
-        }
-        // Recover optimized Sim3
-        // Step 8：得到优化后的结果
+//        // Optimize again only with inliers
+//        // Step 7：再次g2o优化 剔除后剩下的边
+//        optimizer.initializeOptimization();
+//        optimizer.optimize(nMoreIterations);
+//
+//        // 统计第二次优化之后,这些匹配点中是内点的个数
+//        int nIn = 0;
+//        for(size_t index = 0; index < nNumberOfMergeKF; index++)
+//        {
+//
+//            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
+//            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
+//            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+//            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
+//            for (size_t i = 0; i < vpEdges12.size(); i++)
+//            {
+//                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
+//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
+//                g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12[i];
+//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21[i];
+//                if (!e12 || !e21 || !e12f || !e21f)
+//                    continue;
+//
+//                if (e12->chi2() > th2 || e21->chi2() > th2 || e12f->chi2() > th2 || e21f->chi2() > th2)
+//                {
+//                    size_t idx = vnIndexEdge[i];
+//                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
+//                }
+//                else
+//                    nIn++;
+//            }
+//        }
+//        // Recover optimized Sim3
+//        // Step 8：得到优化后的结果
         g2o::VertexSim3Expmap *vSim3_recov = static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0));
         g2oS12 = vSim3_recov->estimate();
-        return nIn;
+        return nCorrespondences-nBad;
     }
 
 
