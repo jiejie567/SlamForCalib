@@ -39,7 +39,7 @@ class ImageGrabber
 public:
     ImageGrabber(ORB_SLAM3::System* pSLAM1,ORB_SLAM3::System* pSLAM2):mpSLAM1(pSLAM1),mpSLAM2(pSLAM2){}
 
-    void GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1, const sensor_msgs::ImageConstPtr& msgRGB2, const sensor_msgs::ImageConstPtr& msgD2);
+    void GrabRGB(const sensor_msgs::ImageConstPtr& msgRGB1, const sensor_msgs::ImageConstPtr& msgRGB2);
 
     ORB_SLAM3::System* mpSLAM1;
     ORB_SLAM3::System* mpSLAM2;
@@ -47,7 +47,7 @@ public:
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "monoAndRGBD");
+    ros::init(argc, argv, "MonoAndMono");
     ros::start();
 
     if(argc != 4)
@@ -55,24 +55,23 @@ int main(int argc, char **argv)
         cerr << endl << "Usage: rosrun ORB_SLAM3 MonoAndRGBD path_to_vocabulary path_to_settings_1 path_to_settings_2" << endl;
         ros::shutdown();
         return 1;
-    }    
+    }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM3::System SLAM1(argv[1],argv[2],ORB_SLAM3::System::MONOCULAR,true);
-    ORB_SLAM3::System SLAM2(argv[1],argv[3],ORB_SLAM3::System::RGBD,false);
-    
+    ORB_SLAM3::System SLAM2(argv[1],argv[3],ORB_SLAM3::System::MONOCULAR,false);
+
 
     ImageGrabber igb(&SLAM1,&SLAM2);
 
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera/color/image_rect_color", 100);
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera2/color/image_rect_color", 100);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub2(nh, "/camera2/aligned_depth_to_color/image_raw", 100);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera/color/image_raw", 100);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera2/color/image_raw", 100);
     cout<<"建立订阅"<<endl;
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::Image> sync_pol;
-    message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub1, rgb_sub2, depth_sub2);
-    sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD,&igb,_1,_2,_3));
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
+    message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub1, rgb_sub2);
+    sync.registerCallback(boost::bind(&ImageGrabber::GrabRGB,&igb,_1,_2));
 
     ros::spin();
     cout<<"ros::spin结束"<<endl;
@@ -85,12 +84,12 @@ int main(int argc, char **argv)
     cout<<"SLAM已关闭"<<endl;
     ros::shutdown();
     SLAM1.MergeSLAMs(&SLAM2);
-    
+
     cout<<"节点结束"<<endl;
     return 0;
 }
 
-void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgRGB2,const sensor_msgs::ImageConstPtr& msgD2)
+void ImageGrabber::GrabRGB(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgRGB2)
 {
     // Copy the ros image message to cv::Mat.
     cv_bridge::CvImageConstPtr cv_ptrRGB1;
@@ -104,8 +103,8 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sens
         return;
     }
 
-    
-        // Copy the ros image message to cv::Mat.
+
+    // Copy the ros image message to cv::Mat.
     cv_bridge::CvImageConstPtr cv_ptrRGB2;
     try
     {
@@ -116,18 +115,10 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sens
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-    cv_bridge::CvImageConstPtr cv_ptrD2;
-    try
-    {
-        cv_ptrD2 = cv_bridge::toCvShare(msgD2);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
-    mpSLAM1->TrackMonocular(cv_ptrRGB1->image,cv_ptrRGB2->header.stamp.toSec());
-    mpSLAM2->TrackRGBD(cv_ptrRGB2->image,cv_ptrD2->image,cv_ptrRGB2->header.stamp.toSec());
+
+    mpSLAM1->TrackMonocular(cv_ptrRGB1->image,cv_ptrRGB1->header.stamp.toSec());
+    mpSLAM2->TrackMonocular(cv_ptrRGB2->image,cv_ptrRGB2->header.stamp.toSec());
+
 }
 
 

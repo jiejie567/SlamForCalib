@@ -36,7 +36,7 @@ LoopClosing::LoopClosing(Atlas *pAtlas, KeyFrameDatabase *pDB, ORBVocabulary *pV
     mbResetRequested(false), mbResetActiveMapRequested(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas),
     mpKeyFrameDB(pDB), mpORBVocabulary(pVoc), mpMatchedKF(NULL), mLastLoopKFid(0), mbRunningGBA(false), mbFinishedGBA(true),
     mbStopGBA(false), mpThreadGBA(NULL), mbFixScale(bFixScale), mnFullBAIdx(0), mnLoopNumCoincidences(0), mnMergeNumCoincidences(0),
-    mbLoopDetected(false), mbMergeDetected(false), mnLoopNumNotFound(0), mnMergeNumNotFound(0)
+    mbLoopDetected(false), mbMergeDetected(false), mnLoopNumNotFound(0), mnMergeNumNotFound(0),mnBestMatchesReproj(0)
 {
     // 连续性阈值
     mnCovisibilityConsistencyTh = 3;
@@ -328,8 +328,9 @@ void LoopClosing::Run()
     SetFinish();
 }
 // 回环线程主函数
-void LoopClosing::RunMerge()
+bool LoopClosing::RunMerge()
 {
+    static auto tmp = mlpLoopKeyFrameQueue;
     mbFinished =false;
     // 线程主循环
     int nMergeTimes = 0;
@@ -342,6 +343,9 @@ void LoopClosing::RunMerge()
 
     cv::Mat Tcw_f = pFinalKFInCurr->GetPose();
     g2o::Sim3 gScw_f(Converter::toMatrix3d(Tcw_f.rowRange(0, 3).colRange(0, 3)),Converter::toVector3d(Tcw_f.rowRange(0, 3).col(3)),1.0);
+    vector<float> vEulerX,vEulerY,vEulerZ,vTransX,vTransY,vTransZ;
+    vEulerX.reserve(200);vEulerY.reserve(200);vEulerZ.reserve(200);
+    vTransX.reserve(200);vTransY.reserve(200);vTransZ.reserve(200);
     while(CheckNewKeyFrames())
     {
         // cout<<mlpLoopKeyFrameQueue.size()<<endl;
@@ -404,9 +408,20 @@ void LoopClosing::RunMerge()
 
                     // 记录焊接变换(Sim3) T_w2_w1 , 这个量实际是两个地图坐标系的关系 T_w2_w1 = T_w2_c * T_c_w1
                     mSold_new = (gSw2c * gScw1);
-                    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
-                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
-                    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
+//                    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
+//                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
+                    auto result = Converter::toCvMatWithoutS(mSold_new.inverse());
+                    cout<<"两个地图Tc2c1以第一帧的关系: "<<result<<endl<<endl;
+                    vector<float> EulerResult = Converter::toEuler(result.colRange(0,3).rowRange(0,3));
+                    cout<<"以欧拉角表示: "<<endl<<"x: "<< EulerResult[0]<<endl<<"y: "<< EulerResult[1]<< endl << "z: "<< EulerResult[2]<<endl;
+                    vEulerX.push_back(EulerResult[0]);
+                    vEulerY.push_back(EulerResult[1]);
+                    vEulerZ.push_back(EulerResult[2]);
+                    vTransX.push_back(result.at<float>(0,3));
+                    vTransY.push_back(result.at<float>(1,3));
+                    vTransZ.push_back(result.at<float>(2,3));
+
+//                    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
 
                     // 更新mg2oMergeScw
                     mg2oMergeScw = mg2oMergeSlw;
@@ -464,20 +479,65 @@ void LoopClosing::RunMerge()
 
 
     SetFinish();
+    cout<<"\nEulerX Vector: \n";
+    for(auto x:vEulerX){
+        cout<<x<<" ";
+    }
+    cout<<"\nEulerY Vector: \n";
+    for(auto y:vEulerY){
+        cout<<y<<" ";
+    }
+    cout<<"\nEulerZ Vector: \n";
+    for(auto z:vEulerZ){
+        cout<<z<<" ";
+    }
+    cout<<"\nvTransX Vector: \n";
+    for(auto x:vTransX){
+        cout<<x<<" ";
+    }
+    cout<<"\nvTransY Vector: \n";
+    for(auto y:vTransY){
+        cout<<y<<" ";
+    }
+    cout<<"\nvTransZ Vector: \n";
+    for(auto z:vTransZ){
+        cout<<z<<" ";
+    }
+    cout<<"\n优化前给的初始值为"<<endl<<Converter::toCvMatWithoutS(mg2oSw1w2.inverse())<<endl;
     cout<<"总帧数: "<<nKFs<<endl;
     cout<< "总共检测到融合的次数: "<< nMergeTimes << endl;
     cout<<"开始总优化"<<endl;
-    int nmatchedFinal = 0;
-    nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, mvvpMatches1s,mSold_new,20,mbFixScale);
+    int nmatchedFinal;
+    auto iniSw1w2 = mg2oSw1w2;
+    auto vvpMatches1s = mvvpMatches1s;
+    nmatchedFinal = Optimizer::OptimizeSim3ForCalibr(mvpKF1s, mvpKF2s, vvpMatches1s,iniSw1w2,10,mbFixScale);
     cout << "最终匹配点数: "<<nmatchedFinal<<endl;
-    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
-    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
-    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(gFinalTFTrans.inverse())<<endl<<endl;
+    auto result = Converter::toCvMatWithoutS(iniSw1w2.inverse());
+    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<result<<endl<<endl;
+    vector<float> EulerResult = Converter::toEuler(result.colRange(0,3).rowRange(0,3));
+    cout<<"以欧拉角表示: "<<endl<<"x: "<< EulerResult[0]<<endl<<"y: "<< EulerResult[1]<<endl<<"z: "<< EulerResult[2]<<endl;
 
-    nmatchedFinal = Optimizer::OptimizeSim3FirstFinalForCalibr(mvpKF1s,Tcw_f, mvpKF2s,Tmw_f, mvvpMatches1s,mSold_new,20,mbFixScale);
+    iniSw1w2 = mg2oSw1w2;
+    auto vvpMatches1sFinal = mvvpMatches1s;
+    nmatchedFinal = Optimizer::OptimizeSim3FinalForCalibr(mvpKF1s,Tcw_f, mvpKF2s, Tmw_f,vvpMatches1sFinal,iniSw1w2,10,mbFixScale);
     cout << "最终匹配点数: "<<nmatchedFinal<<endl;
-    cout<<"两个地图以首尾两帧共同的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
-
+    cout<<"两个地图Tc2c1以最后一帧的关系: "<<endl<<Converter::toCvMatWithoutS(iniSw1w2.inverse())<<endl<<endl;
+//
+//    int cnt = 0;
+//    for(int i;i<vvpMatches1s.size();i++)
+//    {
+//        for(int j;j<vvpMatches1s[i].size();j++)
+//        {
+//            if(vvpMatches1s[i][j]!=vvpMatches1sFinal[i][j])
+//                cnt++;
+//        }
+//    }
+//    cout<<"上述两种匹配不同的点数为"<<cnt<<endl;
+//    nmatchedFinal = Optimizer::OptimizeSim3FirstFinalForCalibr(mvpKF1s,Tcw_f, mvpKF2s, Tmw_f, vvpMatches1s, vvpMatches1sFinal,mg2oSw1w2,20,mbFixScale);
+//    cout << "最终匹配点数: "<<nmatchedFinal<<endl;
+//    cout<<"两个地图以首尾两帧共同的关系: "<<endl<<Converter::toCvMatWithoutS(mg2oSw1w2.inverse())<<endl<<endl;
+//    mlpLoopKeyFrameQueue = tmp;
+    return nmatchedFinal>500;
 }
 // 将某个关键帧加入到回环检测的过程中,由局部建图线程调用
 void LoopClosing::InsertKeyFrame(KeyFrame *pKF)
@@ -580,11 +640,11 @@ bool LoopClosing::NewDetectCommonRegions()
             mvpLoopMatchedMPs = vpMatchedMPs;
 
             // 如果验证数大于等于3则为成功回环
-            mbLoopDetected = mnLoopNumCoincidences >= 3;
+            mbLoopDetected = mnLoopNumCoincidences >= 2;
             // 记录失败的时序校验数为0
             mnLoopNumNotFound = 0;
             //! 这里的条件反了,不过对功能没什么影响,只是打印信息
-            if(!mbLoopDetected)
+            if(mbLoopDetected)
             {
                 //f_succes_pr << mpCurrentKF->mNameFile << " " << "8"<< endl;
                 //f_succes_pr << "% Number of spatial consensous: " << std::to_string(mnLoopNumCoincidences) << endl;
@@ -746,7 +806,7 @@ bool LoopClosing::NewDetectCommonRegions()
 #endif
         // Search in BoW
         // 分别找到3个最好的候选帧, 回环候选帧放在vpLoopBowCand中,融合候选帧放在vpMergeBowCand中
-        mpKeyFrameDB->DetectNBestCandidates(mpCurrentKF, vpLoopBowCand, vpMergeBowCand,3);
+        mpKeyFrameDB->DetectNBestCandidates(mpCurrentKF, vpLoopBowCand, vpMergeBowCand,10);
 #ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point time_EndDetectBoW = std::chrono::steady_clock::now();
         timeDetectBoW = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndDetectBoW - time_StartDetectBoW).count();
@@ -1084,7 +1144,7 @@ bool LoopClosing::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, 
     set<KeyFrame*> spConnectedKeyFrames = mpCurrentKF->GetConnectedKeyFrames();
 
     // 定义最佳共视关键帧的数量
-    int nNumCovisibles = 10;
+    int nNumCovisibles = 5;
     // 用于search by bow
     ORBmatcher matcherBoW(0.9, true);
     // 用与seach by projection
@@ -1327,7 +1387,7 @@ bool LoopClosing::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, 
                         vpMatchedMP.resize(mpCurrentKF->GetMapPointMatches().size(), static_cast<MapPoint*>(NULL));
                         // Step 3.4 重新利用之前计算的mScw信息, 通过更小的半径和更严格的距离的投影寻找匹配点
                         // 5 : 半径的增益系数(对比之前下降了)---> 更小的半径, 1.0 , hamming distance 的阀值增益系数---> 允许更小的距离
-                        int numProjOptMatches = matcher.SearchByProjection(mpCurrentKF, mScw, vpMapPoints, vpMatchedMP, 5, 1.0);
+                        int numProjOptMatches = matcher.SearchByProjection(mpCurrentKF, mScw, vpMapPoints, vpMatchedMP, 5, 2.0);
                         //cout <<"BoW: " << numProjOptMatches << " matches after of the Sim3 optimization" << endl;
                         // 当新的投影得到的内点数量大于nProjOptMatches=80时
                         if(numProjOptMatches >= nProjOptMatches)
@@ -1381,6 +1441,12 @@ bool LoopClosing::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, 
                                 g2oBestScw = gScw; // 记录最优的位姿(这个位姿是由Tam推到出来的 : Taw = Tam * Tmw,这里a表示c)
                                 vpBestMapPoints = vpMapPoints; //  记录所有的地图点
                                 vpBestMatchedMapPoints = vpMatchedMP; // 记录所有的地图点中被成功匹配的点
+                                if(nBestMatchesReproj>mnBestMatchesReproj)
+                                {
+                                    g2o::Sim3 Tcw(Converter::toMatrix3d(mpCurrentKF->GetRotation()),Converter::toVector3d(mpCurrentKF->GetTranslation()),1.0);
+                                    g2o::Sim3 Tmw(Converter::toMatrix3d(pBestMatchedKF->GetRotation()),Converter::toVector3d(pMostBoWMatchesKF->GetTranslation()),1.0);
+                                    mg2oSw1w2 =  Tcw.inverse()*gScm*Tmw;
+                                }
                             }
 
 
@@ -1404,7 +1470,7 @@ bool LoopClosing::DetectCommonRegionsFromBoW(std::vector<KeyFrame*> &vpBowCand, 
         vpMPs = vpBestMapPoints;
         vpMatchedMPs = vpBestMatchedMapPoints;
         //如果有三个成功验证则return ture
-        return nNumCoincidences >= 3;
+        return nNumCoincidences >= 1;
     }
     else
     {

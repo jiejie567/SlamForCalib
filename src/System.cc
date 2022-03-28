@@ -33,6 +33,9 @@
 #include <boost/archive/xml_iarchive.hpp>
 #include <boost/archive/xml_oarchive.hpp>
 #include "Optimizer.h"
+#include <unistd.h>
+
+
 
 
 namespace ORB_SLAM3
@@ -825,7 +828,11 @@ void System::MergeSLAMs(System* pSLAM2)
     Optimizer::GlobalBundleAdjustemnt(mpAtlas->GetCurrentMap(),20);
     Optimizer::GlobalBundleAdjustemnt(pSLAM2->mpAtlas->GetCurrentMap(),20);
     mpAtlas->AddNewMap(mpLoopCloser,pSLAM2);
-    mpLoopCloser->RunMerge();
+    int cnt = 0;
+    while(!mpLoopCloser->RunMerge()&&cnt<0){
+        sleep(5);
+        cnt++;
+    }
 
 
 }

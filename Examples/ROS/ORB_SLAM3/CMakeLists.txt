@@ -62,75 +62,64 @@ ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM3.so
 )
 
 # Node for monocular camera
-rosbuild_add_executable(Mono
-src/ros_mono.cc
+rosbuild_add_executable(MonoAndMono
+src/ros_MonoAndMono.cc
 )
 
-target_link_libraries(Mono
+target_link_libraries(MonoAndMono
 ${LIBS}
 )
 
 # Node for monocular and RGBD camera
 rosbuild_add_executable(MonoAndRGBD
-src/ros_mono_rgbd.cc
+src/ros_MonoAndRGBD.cc
 )
 
 target_link_libraries(MonoAndRGBD
 ${LIBS}
 )
 
-# Node for monocular camera (Augmented Reality Demo)
-rosbuild_add_executable(MonoAR
-src/AR/ros_mono_ar.cc
-src/AR/ViewerAR.h
-src/AR/ViewerAR.cc
-)
-
-target_link_libraries(MonoAR
-${LIBS}
-)
-
 # Node for stereo camera
-rosbuild_add_executable(Stereo
-src/ros_stereo.cc
-)
+# rosbuild_add_executable(Stereo
+# src/ros_stereo.cc
+# )
 
-target_link_libraries(Stereo
-${LIBS}
-)
+# target_link_libraries(Stereo
+# ${LIBS}
+# )
 
 # Node for RGB-D camera
-rosbuild_add_executable(RGBD
-src/ros_rgbd.cc
-)
+# rosbuild_add_executable(RGBD
+# src/ros_rgbd.cc
+# )
 
-target_link_libraries(RGBD
-${LIBS}
-)
+# target_link_libraries(RGBD
+# ${LIBS}
+# )
 
 # Node for monocular-inertial camera
-rosbuild_add_executable(Mono_Inertial
-src/ros_mono_inertial.cc
-)
+# rosbuild_add_executable(Mono_Inertial
+# src/ros_mono_inertial.cc
+# )
 
-target_link_libraries(Mono_Inertial
-${LIBS}
-)
+# target_link_libraries(Mono_Inertial
+# ${LIBS}
+# )
 
-# Node for stereo-inertial camera
-rosbuild_add_executable(Stereo_Inertial
-src/ros_stereo_inertial.cc
-)
+# # Node for stereo-inertial camera
+# rosbuild_add_executable(Stereo_Inertial
+# src/ros_stereo_inertial.cc
+# )
 
-target_link_libraries(Stereo_Inertial
-${LIBS}
-)
+# target_link_libraries(Stereo_Inertial
+# ${LIBS}
+# )
 
 # Node for RGB-D double camera xj 
-rosbuild_add_executable(doubleRGBD
-src/ros_rgbd_xj.cc
+rosbuild_add_executable(RGBDAndRGBD
+src/ros_RGBDAndRGBD.cc
 )
 
-target_link_libraries(doubleRGBD
+target_link_libraries(RGBDAndRGBD
 ${LIBS}
 )

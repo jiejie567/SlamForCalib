@@ -83,7 +83,7 @@ public:
     void RequestFinish();
 
     bool isFinished();
-    void RunMerge();
+    bool RunMerge();
     bool NewDetectCommonRegionsForMerge();
     void MergeCal();
     Viewer* mpViewer;
@@ -174,6 +174,8 @@ protected:
     std::vector<MapPoint*> mvpLoopMapPoints;
     cv::Mat mScw;
     g2o::Sim3 mg2oScw;
+    g2o::Sim3 mg2oSw1w2;
+    int mnBestMatchesReproj;
 
     //-------
     Map* mpLastMap;

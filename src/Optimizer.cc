@@ -3540,7 +3540,7 @@ namespace ORB_SLAM3
         pMap->IncreaseChangeIndex();
     }
 
-    int Optimizer::OptimizeSim3ForCalibr(const vector<KeyFrame *> &vpKF1s, const vector<KeyFrame *> &vpKF2s, const vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
+    int Optimizer::OptimizeSim3ForCalibr(const vector<KeyFrame *> &vpKF1s, const vector<KeyFrame *> &vpKF2s, vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
     {
         // Step 1：初始化g2o优化器
         // 先构造求解器
@@ -3565,7 +3565,6 @@ namespace ORB_SLAM3
         g2o::VertexSim3Expmap *vSim3 = new g2o::VertexSim3Expmap();
         // 根据传感器类型决定是否固定尺度
         vSim3->_fix_scale = bFixScale;
-        vSim3->setEstimate(g2oS12);
         vSim3->setId(0);
         // Sim3 需要优化
         vSim3->setFixed(false);                           // 因为要优化Sim3顶点，所以设置为false
@@ -3596,7 +3595,9 @@ namespace ORB_SLAM3
         vvpEdges21.reserve(2*nNumberOfMergeKF);
         vvnIndexEdge.reserve(2*nNumberOfMergeKF);
 
-
+        // 辅助容器,计算非重复点数目
+        set<MapPoint*> spMapPoints;
+        int nNonredundantPt = 0;
         for (size_t idx = 0; idx < nNumberOfMergeKF; idx++)
         {
             KeyFrame *pKF1 = vpKF1s[idx];
@@ -3627,6 +3628,13 @@ namespace ORB_SLAM3
                 MapPoint *pMP1 = vpMapPoints1[i];
                 MapPoint *pMP2 = vpMatches1[i];
 
+                if(spMapPoints.find(pMP1) == spMapPoints.end())
+                {
+                    // 辅助容器用来记录点是否已经添加
+                    spMapPoints.insert(pMP1);
+                    nNonredundantPt++;
+                    // 把地图点和对应关键帧记录下来
+                }
                 // 保证顶点的id能够错开
                 const int id1 = 2 * (i+IdOff)+1;
 //                cout<<"id1: "<<id1<<endl;
@@ -3707,6 +3715,7 @@ namespace ORB_SLAM3
                 e21->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(0)));
                 e21->setMeasurement(obs2);
                 float invSigmaSquare2 = pKF2->mvInvLevelSigma2[kpUn2.octave];
+//                cout<<"invSigmaSqure2: "<<invSigmaSquare2<<endl;
                 e21->setInformation(Eigen::Matrix2d::Identity() * invSigmaSquare2);
 
                 g2o::RobustKernelHuber *rk2 = new g2o::RobustKernelHuber;
@@ -3718,31 +3727,63 @@ namespace ORB_SLAM3
                 vpEdges21.push_back(e21);
                 vnIndexEdge.push_back(i);
 
-                IdOff += N; //计算每组序号起始值
             }
+            IdOff += N; //计算每组序号起始值
             vvpEdges12.push_back(vpEdges12);
             vvpEdges21.push_back(vpEdges21);
             vvnIndexEdge.push_back(vnIndexEdge);
         }
-        // Optimize!
-        // Step 5：g2o开始优化，先迭代5次
-        optimizer.initializeOptimization();
-        optimizer.optimize(500);
 
 //        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
-        cout<<"匹配点有："<<nCorrespondences<<endl;
-
-
-//        // Check inliers
+        cout<<"参与匹配点共有："<<nCorrespondences<<endl;
+        cout<<"去重后的点共有："<<nNonredundantPt<<endl;
+        // Optimize!
+        // Step 5：g2o开始优化，先迭代10次
+//        一共进行4次优化
         int nBad = 0;
-        int nMoreIterations;
-        for(size_t index = 0; index< nNumberOfMergeKF; index++)
+        for(size_t it=0;it<4;it++)
         {
+            vSim3->setEstimate(g2oS12);
+            optimizer.initializeOptimization(0);
+            optimizer.optimize(10);
+
+            nBad = 0;
+            for(size_t index = 0; index< nNumberOfMergeKF; index++)
+            {
+                vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
+                vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
+                vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
+                const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+                for (size_t i = 0; i < vpEdges12.size(); i++)
+                {
+                    g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
+                    g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
+                    if (!e12 || !e21)
+                        continue;
+
+                    if (e12->chi2() > th2 || e21->chi2() > th2)
+                    {
+                        e12->setLevel(1);
+                        e21->setLevel(1);
+                        nBad++;
+                    } else
+                    {
+                        e12->setLevel(0);
+                        e21->setLevel(0);
+                    }
+                }
+            }
+        }
+        cout<<"坏点有："<<nBad<<endl;
+//去除不匹配的外点
+        double SumChi2 = 0;
+        for(size_t index = 0; index < nNumberOfMergeKF; index++)
+        {
+
             vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
             vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
+            vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
             vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-            int nBadInEach = 0;
             for (size_t i = 0; i < vpEdges12.size(); i++)
             {
                 g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
@@ -3752,67 +3793,16 @@ namespace ORB_SLAM3
 
                 if (e12->chi2() > th2 || e21->chi2() > th2)
                 {
-                    // 正向或反向投影任意一个超过误差阈值就删掉该边
                     size_t idx = vnIndexEdge[i];
-                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-                    optimizer.removeEdge(e12);
-                    optimizer.removeEdge(e21);
-                    vpEdges12[i] = static_cast<g2o::EdgeSim3ProjectXYZForCalibr *>(NULL);
-                    vpEdges21[i] = static_cast<g2o::EdgeInverseSim3ProjectXYZForCalibr *>(NULL);
-                    // 累计删掉的边 数目
-                    nBad++;
-                    nBadInEach++;
+                    vpMatches1[idx] = static_cast<MapPoint *>(NULL);
+                }
+                else{
+                    SumChi2+=sqrt(abs(e12->chi2()))+sqrt(abs(e21->chi2()));
                 }
             }
-            // cout<<"每层错误的个数为："<<nBadInEach <<endl;
-            // 如果有误差较大的边被剔除那么说明回环质量并不是非常好,还要多迭代几次;反之就少迭代几次
-            if (nBad > 0)
-                nMoreIterations = 10;
-            else
-                nMoreIterations = 5;
         }
-        cout<<"坏点有："<<nBad<<endl;
-        // 如果经过上面的剔除后剩下的匹配关系已经非常少了,那么就放弃优化。内点数直接设置为0
-        // if (nCorrespondences - nBad < 10*nNumberOfMergeKF)
-        //     return 0;
-
-//        if (nCorrespondences - nBad < 10)
-//        {
-//            cout<<"fail"<<endl;
-//            return 0;
-//        }
-
-
-//        // Optimize again only with inliers
-//        // Step 7：再次g2o优化 剔除后剩下的边
-//        optimizer.initializeOptimization();
-//        optimizer.optimize(nMoreIterations);
-//
-//        // 统计第二次优化之后,这些匹配点中是内点的个数
-//        int nIn = 0;
-//        for(size_t index = 0; index < nNumberOfMergeKF; index++)
-//        {
-//
-//            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
-//            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
-//            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-//            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-//            for (size_t i = 0; i < vpEdges12.size(); i++)
-//            {
-//                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
-//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
-//                if (!e12 || !e21)
-//                    continue;
-//
-//                if (e12->chi2() > th2 || e21->chi2() > th2)
-//                {
-//                    size_t idx = vnIndexEdge[i];
-//                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-//                }
-//                else
-//                    nIn++;
-//            }
-//        }
+        SumChi2/=(nCorrespondences-nBad)*2;
+        cout<<"平均投影误差为： "<<SumChi2<<endl;
 //        // Recover optimized Sim3
         // Step 8：得到优化后的结果
         g2o::VertexSim3Expmap *vSim3_recov = static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0));
@@ -3821,7 +3811,7 @@ namespace ORB_SLAM3
         return nCorrespondences-nBad;
     }
 
-    int Optimizer::OptimizeSim3FirstFinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, const vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
+    int Optimizer::OptimizeSim3FinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
     {
         // Step 1：初始化g2o优化器
         // 先构造求解器
@@ -3846,7 +3836,6 @@ namespace ORB_SLAM3
         g2o::VertexSim3Expmap *vSim3 = new g2o::VertexSim3Expmap();
         // 根据传感器类型决定是否固定尺度
         vSim3->_fix_scale = bFixScale;
-        vSim3->setEstimate(g2oS12);
         vSim3->setId(0);
         // Sim3 需要优化
         vSim3->setFixed(false);                           // 因为要优化Sim3顶点，所以设置为false
@@ -3870,13 +3859,11 @@ namespace ORB_SLAM3
         int nCorrespondences = 0;
         int nNumberOfMergeKF = vpKF1s.size();
         int IdOff = 0;
-        vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12;        // pKF2对应的地图点到pKF1的投影边 的集合
-        vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21; // pKF1对应的地图点到pKF2的投影边 的集合
+
         vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12f;        // pKF2对应的地图点到pKF1的投影边 的集合
         vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21f; // pKF1对应的地图点到pKF2的投影边 的集合
         vector<vector<size_t>> vvnIndexEdge;                         //边的索引的集合
-        vvpEdges12.reserve(2*nNumberOfMergeKF);
-        vvpEdges21.reserve(2*nNumberOfMergeKF);
+
         vvpEdges12f.reserve(2*nNumberOfMergeKF);
         vvpEdges21f.reserve(2*nNumberOfMergeKF);
         vvnIndexEdge.reserve(2*nNumberOfMergeKF);
@@ -3896,23 +3883,14 @@ namespace ORB_SLAM3
             const int N = vpMatches1.size();
             // 获取pKF1的地图点
             const vector<MapPoint *> vpMapPoints1 = pKF1->GetMapPointMatches();
-            vector<g2o::EdgeSim3ProjectXYZForCalibr *> vpEdges12;        // pKF2对应的地图点到pKF1的投影边
-            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> vpEdges21; // pKF1对应的地图点到pKF2的投影边
             vector<g2o::EdgeSim3ProjectXYZForCalibr *> vpEdges12f;        // pKF2对应的地图点到pKF1的投影边 最后一帧
             vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> vpEdges21f; // pKF1对应的地图点到pKF2的投影边
             vector<size_t> vnIndexEdge;                         //边的索引
             vnIndexEdge.reserve(2 * N);
-            vpEdges12.reserve(2 * N);
-            vpEdges21.reserve(2 * N);
             vpEdges12f.reserve(2 * N);
             vpEdges21f.reserve(2 * N);
 
             // Camera poses
-            const Matrix3d R1w = Converter::toMatrix3d(pKF1->GetRotation());
-            const Vector3d t1w = Converter::toVector3d(pKF1->GetTranslation());
-            const Matrix3d R2w = Converter::toMatrix3d(pKF2->GetRotation());
-            const Vector3d t2w = Converter::toVector3d(pKF2->GetTranslation());
-
             const cv::Mat T1f = pKF1->GetPose()*FinalPose1.inv();
             const Matrix3d R1f = Converter::toMatrix3d(T1f.rowRange(0,3).colRange(0,3).clone());
             const Vector3d t1f = Converter::toVector3d(T1f.rowRange(0,3).col(3).clone());
@@ -3931,13 +3909,10 @@ namespace ORB_SLAM3
 
 
                 // 保证顶点的id能够错开
-                const int id1 = 4 * (i+IdOff)+1;
-//                cout<<"id1: "<<id1<<endl;
-                const int id2 = 4 * (i+IdOff)+2;
 
-                const int id1f = 4 * (i+IdOff)+3;//f表示最后一帧
+                const int id1f = 2 * (i+IdOff)+1;//f表示最后一帧
 
-                const int id2f = 4 * (i+IdOff)+4;
+                const int id2f = 2 * (i+IdOff)+2;
 
 //                cout<<"id2: "<<id2<<endl;
                 // i2 是 pMP2 在pKF2中对应的索引
@@ -3947,24 +3922,11 @@ namespace ORB_SLAM3
                 {
                     if (!pMP1->isBad() && !pMP2->isBad() && i2 >= 0)
                     {
-                        // 如果这对匹配点都靠谱，并且对应的2D特征点也都存在的话，添加PointXYZ顶点
-                        g2o::VertexSBAPointXYZ *vPoint1 = new g2o::VertexSBAPointXYZ();
-                        // 地图点转换到各自相机坐标系下的三维点
-                        cv::Mat P3D1w = pMP1->GetWorldPos();
-                        // cv::Mat P3D1c = R1w * P3D1w + t1w;
-                        vPoint1->setEstimate(Converter::toVector3d(P3D1w));
-                        vPoint1->setId(id1);
-                        // 地图点不优化
-                        vPoint1->setFixed(true);
-                        optimizer.addVertex(vPoint1);
 
-                        g2o::VertexSBAPointXYZ *vPoint2 = new g2o::VertexSBAPointXYZ();
+                        cv::Mat P3D1w = pMP1->GetWorldPos();
+
                         cv::Mat P3D2w = pMP2->GetWorldPos();
-//                         cv::Mat P3D2c = R2w * P3D2w + t2w;
-                        vPoint2->setEstimate(Converter::toVector3d(P3D2w));
-                        vPoint2->setId(id2);
-                        vPoint2->setFixed(true);
-                        optimizer.addVertex(vPoint2);
+
 
                         // 如果这对匹配点都靠谱，并且对应的2D特征点也都存在的话，添加PointXYZ顶点
                         g2o::VertexSBAPointXYZ *vPoint1f = new g2o::VertexSBAPointXYZ();
@@ -4003,23 +3965,9 @@ namespace ORB_SLAM3
                 const cv::KeyPoint &kpUn1 = pKF1->mvKeysUn[i];
                 obs1 << kpUn1.pt.x, kpUn1.pt.y;
 
-                // Step 4.1 闭环候选帧地图点投影到当前帧的边 -- 正向投影
-                g2o::EdgeSim3ProjectXYZForCalibr *e12 = new g2o::EdgeSim3ProjectXYZForCalibr(R1w,t1w);
-                // vertex(id2)对应的是pKF2 VertexSBAPointXYZ 类型的三维点
-                e12->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id2)));
-                // ? 为什么这里添加的节点的id为0？
-                // 回答：因为vertex(0)对应的是 VertexSim3Expmap 类型的待优化Sim3，其id 为 0
-                e12->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(0)));
-                e12->setMeasurement(obs1);
-                // 信息矩阵和这个特征点的可靠程度（在图像金字塔中的图层）有关
-                const float &invSigmaSquare1 = pKF1->mvInvLevelSigma2[kpUn1.octave];
-                e12->setInformation(Eigen::Matrix2d::Identity() * invSigmaSquare1);
 
-                // 使用鲁棒核函数
-                g2o::RobustKernelHuber *rk1 = new g2o::RobustKernelHuber;
-                e12->setRobustKernel(rk1);
-                rk1->setDelta(deltaHuber);
-                optimizer.addEdge(e12);
+                const float &invSigmaSquare1 = pKF1->mvInvLevelSigma2[kpUn1.octave];
+
 
 
                 // 添加最后一帧的正向投影边
@@ -4049,6 +3997,288 @@ namespace ORB_SLAM3
                 const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[i2];
                 obs2 << kpUn2.pt.x, kpUn2.pt.y;
 
+                float invSigmaSquare2 = pKF2->mvInvLevelSigma2[kpUn2.octave];
+
+                g2o::RobustKernelHuber *rk2 = new g2o::RobustKernelHuber;
+
+                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = new g2o::EdgeInverseSim3ProjectXYZForCalibr(R2f,t2f);
+                // vertex(id1)对应的是pKF1 VertexSBAPointXYZ 类型的三维点，内部误差公式也不同
+                e21f->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id1f)));
+                e21f->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(0)));
+                e21f->setMeasurement(obs2);
+                e21f->setInformation(Eigen::Matrix2d::Identity() * invSigmaSquare2);
+                g2o::RobustKernelHuber *rk2f = new g2o::RobustKernelHuber;
+                e21f->setRobustKernel(rk2f);
+                rk2f->setDelta(deltaHuber);
+                optimizer.addEdge(e21f);
+
+                vpEdges12f.push_back(e12f);
+                vpEdges21f.push_back(e21f);
+                vnIndexEdge.push_back(i);
+            }
+            IdOff += N; //计算每组序号起始值
+            vvpEdges12f.push_back(vpEdges12f);
+            vvpEdges21f.push_back(vpEdges21f);
+            vvnIndexEdge.push_back(vnIndexEdge);
+        }
+
+        cout<<"参与匹配点共有："<<nCorrespondences<<endl;
+        // Optimize!
+
+        // Check inliers
+        int nBad = 0;
+        for(size_t it=0;it<4;it++)
+        {
+            vSim3->setEstimate(g2oS12);
+            nBad = 0;
+            // Step 5：g2o开始优化，先迭代10次
+            optimizer.initializeOptimization(0);
+            optimizer.optimize(10);
+            for(size_t index = 0; index< nNumberOfMergeKF; index++)
+            {
+                vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12f = vvpEdges12f[index];
+                vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21f = vvpEdges21f[index];
+
+                vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
+                const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+                for (size_t i = 0; i < vpEdges12f.size(); i++)
+                {
+                    g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12f[i];
+                    g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21f[i];
+                    if (!e12f || !e21f  )
+                        continue;
+
+                    if (e12f->chi2() > th2 || e21f->chi2() > th2)
+                    {
+                        // 正向或反向投影任意一个超过误差阈值就删掉该边
+                        size_t idx = vnIndexEdge[i];
+                        // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
+                        e12f->setLevel(1);
+                        e21f->setLevel(1);
+                        nBad++;
+                    }
+                    else
+                    {
+                        e12f->setLevel(0);
+                        e21f->setLevel(0);
+                    }
+                }
+            }
+        }
+        cout<<"坏点有："<<nBad<<endl;
+        //去除不匹配的外点
+        for(size_t index = 0; index < nNumberOfMergeKF; index++)
+        {
+
+            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12f = vvpEdges12f[index];
+            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21f = vvpEdges21f[index];
+            vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
+            for (size_t i = 0; i < vpEdges12f.size(); i++)
+            {
+                g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12f[i];
+                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21f[i];
+                if (!e12f || !e21f)
+                    continue;
+
+                if (e12f->chi2() > th2 || e21f->chi2() > th2)
+                {
+                    size_t idx = vnIndexEdge[i];
+                    vpMatches1[idx] = static_cast<MapPoint *>(NULL);
+                }
+            }
+        }
+
+
+//        // Step 8：得到优化后的结果
+        g2o::VertexSim3Expmap *vSim3_recov = static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0));
+        g2oS12 = vSim3_recov->estimate();
+        return nCorrespondences-nBad;//        // Optimize again only with inliers
+
+    }
+
+
+    int Optimizer::OptimizeSim3FirstFinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, vector<vector<MapPoint *>> &vvpMatches1s, vector<vector<MapPoint *>> &vvpMatches1sFinal,g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)
+    {
+        // Step 1：初始化g2o优化器
+        // 先构造求解器
+        g2o::SparseOptimizer optimizer;
+        // 构造线性方程求解器，Hx = -b的求解器
+        g2o::BlockSolverX::LinearSolverType *linearSolver;
+        // 使用dense的求解器，（常见非dense求解器有cholmod线性求解器和shur补线性求解器）
+        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX::PoseMatrixType>();
+        g2o::BlockSolverX *solver_ptr = new g2o::BlockSolverX(linearSolver);
+        // 使用L-M迭代
+        g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+        optimizer.setAlgorithm(solver);
+
+        // Calibration
+        // 内参矩阵
+        const cv::Mat &K1 = vpKF1s.front()->mK;
+        const cv::Mat &K2 = vpKF2s.front()->mK;
+        // cout<<"K1: "<<K1<<endl;
+        // cout<<"K2: "<<K2<<endl;
+
+        // Step 2 设置Sim3 作为顶点
+        g2o::VertexSim3Expmap *vSim3 = new g2o::VertexSim3Expmap();
+        // 根据传感器类型决定是否固定尺度
+        vSim3->_fix_scale = bFixScale;
+        vSim3->setId(0);
+        // Sim3 需要优化
+        vSim3->setFixed(false);                           // 因为要优化Sim3顶点，所以设置为false
+        vSim3->_principle_point1[0] = K1.at<float>(0, 2); // 光心横坐标cx
+        vSim3->_principle_point1[1] = K1.at<float>(1, 2); // 光心纵坐标cy
+        vSim3->_focal_length1[0] = K1.at<float>(0, 0);    // 焦距 fx
+        vSim3->_focal_length1[1] = K1.at<float>(1, 1);    // 焦距 fy
+        vSim3->_principle_point2[0] = K2.at<float>(0, 2);
+        vSim3->_principle_point2[1] = K2.at<float>(1, 2);
+        vSim3->_focal_length2[0] = K2.at<float>(0, 0);
+        vSim3->_focal_length2[1] = K2.at<float>(1, 1);
+//        vSim3->pCamera1 = vpKF1s[0]->mpCamera;
+//        vSim3->pCamera2 = vpKF2s[0]->mpCamera;
+        optimizer.addVertex(vSim3);
+
+        // Step 3: 设置地图点作为顶点
+
+        // 核函数的阈值
+        const float deltaHuber = sqrt(th2);
+
+        int nCorrespondences = 0;
+        int nNumberOfMergeKF = vpKF1s.size();
+
+        vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12;        // pKF2对应的地图点到pKF1的投影边 的集合
+        vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21; // pKF1对应的地图点到pKF2的投影边 的集合
+        vector<vector<g2o::EdgeSim3ProjectXYZForCalibr *>> vvpEdges12f;        // pKF2对应的地图点到pKF1的投影边 的集合
+        vector<vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *>> vvpEdges21f; // pKF1对应的地图点到pKF2的投影边 的集合
+        vvpEdges12.reserve(2*nNumberOfMergeKF);
+        vvpEdges21.reserve(2*nNumberOfMergeKF);
+        vvpEdges12f.reserve(2*nNumberOfMergeKF);
+        vvpEdges21f.reserve(2*nNumberOfMergeKF);
+
+        const cv::Mat Rcfw = FinalPose1.rowRange(0,3).colRange(0,3).clone();//c表示当前地图，f表示最后一帧，w表示世界坐标系
+        const cv::Mat tcfw = FinalPose1.rowRange(0,3).col(3).clone();
+        const cv::Mat Rmfw = FinalPose2.rowRange(0,3).colRange(0,3).clone();
+        const cv::Mat tmfw = FinalPose2.rowRange(0,3).col(3).clone();
+        // 辅助容器,避免重复添加地图点
+        int IdOff = 0;
+        for (size_t idx = 0; idx < nNumberOfMergeKF; idx++)
+        {
+            KeyFrame *pKF1 = vpKF1s[idx];
+            KeyFrame *pKF2 = vpKF2s[idx];
+            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[idx];
+            const vector<MapPoint *> &vpMatches1Final = vvpMatches1sFinal[idx];
+
+
+            const int N = vpMatches1.size();
+            // 获取pKF1的地图点
+            const vector<MapPoint *> vpMapPoints1 = pKF1->GetMapPointMatches();
+            vector<g2o::EdgeSim3ProjectXYZForCalibr *> vpEdges12;        // pKF2对应的地图点到pKF1的投影边
+            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> vpEdges21; // pKF1对应的地图点到pKF2的投影边
+            vector<g2o::EdgeSim3ProjectXYZForCalibr *> vpEdges12f;        // pKF2对应的地图点到pKF1的投影边 最后一帧
+            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> vpEdges21f; // pKF1对应的地图点到pKF2的投影边
+
+            vpEdges12.reserve(2 * N);
+            vpEdges21.reserve(2 * N);
+            vpEdges12f.reserve(2 * N);
+            vpEdges21f.reserve(2 * N);
+
+            // Camera poses
+            const Matrix3d R1w = Converter::toMatrix3d(pKF1->GetRotation());
+            const Vector3d t1w = Converter::toVector3d(pKF1->GetTranslation());
+            const Matrix3d R2w = Converter::toMatrix3d(pKF2->GetRotation());
+            const Vector3d t2w = Converter::toVector3d(pKF2->GetTranslation());
+
+            const cv::Mat T1f = pKF1->GetPose()*FinalPose1.inv();
+            const Matrix3d R1f = Converter::toMatrix3d(T1f.rowRange(0,3).colRange(0,3).clone());
+            const Vector3d t1f = Converter::toVector3d(T1f.rowRange(0,3).col(3).clone());
+
+            const cv::Mat T2f = pKF2->GetPose()*FinalPose2.inv();
+            const Matrix3d R2f = Converter::toMatrix3d(T2f.rowRange(0,3).colRange(0,3).clone());
+            const Vector3d t2f = Converter::toVector3d(T2f.rowRange(0,3).col(3).clone());
+            for (int i = 0; i < N; i++)
+            {
+                if (!vpMatches1[i])
+                    continue;
+                // pMP1和pMP2是匹配的地图点
+                MapPoint *pMP1 = vpMapPoints1[i];
+                MapPoint *pMP2 = vpMatches1[i];
+
+                // 保证顶点的id能够错开
+                const int id1 = 4 * (i+IdOff)+1;
+//                cout<<"id1: "<<id1<<endl;
+                const int id2 = 4 * (i+IdOff)+2;
+
+                // i2 是 pMP2 在pKF2中对应的索引
+                const int i2 = get<0>(pMP2->GetIndexInKeyFrame(pKF2));
+
+                if (pMP1 && pMP2)
+                {
+                    if (!pMP1->isBad() && !pMP2->isBad() && i2 >= 0)
+                    {
+                        // 如果这对匹配点都靠谱，并且对应的2D特征点也都存在的话，添加PointXYZ顶点
+                        g2o::VertexSBAPointXYZ *vPoint1 = new g2o::VertexSBAPointXYZ();
+                        // 地图点转换到各自相机坐标系下的三维点
+                        cv::Mat P3D1w = pMP1->GetWorldPos();
+                        // cv::Mat P3D1c = R1w * P3D1w + t1w;
+                        vPoint1->setEstimate(Converter::toVector3d(P3D1w));
+                        vPoint1->setId(id1);
+                        // 地图点不优化
+                        vPoint1->setFixed(true);
+                        optimizer.addVertex(vPoint1);
+
+                        g2o::VertexSBAPointXYZ *vPoint2 = new g2o::VertexSBAPointXYZ();
+                        cv::Mat P3D2w = pMP2->GetWorldPos();
+//                         cv::Mat P3D2c = R2w * P3D2w + t2w;
+                        vPoint2->setEstimate(Converter::toVector3d(P3D2w));
+                        vPoint2->setId(id2);
+                        vPoint2->setFixed(true);
+                        optimizer.addVertex(vPoint2);
+
+                    }
+                    else
+                        continue;
+                }
+                else
+                    continue;
+
+                // 对匹配关系进行计数
+                nCorrespondences++;
+
+                // Step 4: 添加边（地图点投影到特征点）
+                // Set edge x1 = S12*X2
+
+                // 地图点pMP1对应的观测特征点
+                Eigen::Matrix<double, 2, 1> obs1;
+                const cv::KeyPoint &kpUn1 = pKF1->mvKeysUn[i];
+                obs1 << kpUn1.pt.x, kpUn1.pt.y;
+
+                // Step 4.1 闭环候选帧地图点投影到当前帧的边 -- 正向投影
+                g2o::EdgeSim3ProjectXYZForCalibr *e12 = new g2o::EdgeSim3ProjectXYZForCalibr(R1w,t1w);
+                // vertex(id2)对应的是pKF2 VertexSBAPointXYZ 类型的三维点
+                e12->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id2)));
+                // ? 为什么这里添加的节点的id为0？
+                // 回答：因为vertex(0)对应的是 VertexSim3Expmap 类型的待优化Sim3，其id 为 0
+                e12->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(0)));
+                e12->setMeasurement(obs1);
+                // 信息矩阵和这个特征点的可靠程度（在图像金字塔中的图层）有关
+                const float &invSigmaSquare1 = pKF1->mvInvLevelSigma2[kpUn1.octave];
+                e12->setInformation(Eigen::Matrix2d::Identity() * invSigmaSquare1);
+//
+//                // 使用鲁棒核函数
+                g2o::RobustKernelHuber *rk1 = new g2o::RobustKernelHuber;
+                e12->setRobustKernel(rk1);
+                rk1->setDelta(deltaHuber);
+                optimizer.addEdge(e12);
+
+
+
+                // Step 4.2 当前帧地图点投影到闭环候选帧的边 -- 反向投影
+
+                // 地图点pMP2对应的观测特征点
+                Eigen::Matrix<double, 2, 1> obs2;
+                const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[i2];
+                obs2 << kpUn2.pt.x, kpUn2.pt.y;
+
                 g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = new g2o::EdgeInverseSim3ProjectXYZForCalibr(R2w,t2w);
                 // vertex(id1)对应的是pKF1 VertexSBAPointXYZ 类型的三维点，内部误差公式也不同
                 e21->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id1)));
@@ -4062,6 +4292,101 @@ namespace ORB_SLAM3
                 rk2->setDelta(deltaHuber);
                 optimizer.addEdge(e21);
 
+                vpEdges12.push_back(e12);
+                vpEdges21.push_back(e21);
+            }
+            vvpEdges12.push_back(vpEdges12);
+            vvpEdges21.push_back(vpEdges21);
+
+            for (int i = 0; i < N; i++)
+            {
+                if (!vpMatches1Final[i])
+                    continue;
+                // pMP1和pMP2是匹配的地图点
+                MapPoint *pMP1 = vpMapPoints1[i];
+                MapPoint *pMP2 = vpMatches1Final[i];
+
+
+                // 保证顶点的id能够错开
+                const int id1f = 4 * (i+IdOff)+3;//f表示最后一帧
+
+                const int id2f = 4 * (i+IdOff)+4;
+
+//                cout<<"id2: "<<id2<<endl;
+                // i2 是 pMP2 在pKF2中对应的索引
+                const int i2 = get<0>(pMP2->GetIndexInKeyFrame(pKF2));
+
+                if (pMP1 && pMP2)
+                {
+                    if (!pMP1->isBad() && !pMP2->isBad() && i2 >= 0)
+                    {
+                        cv::Mat P3D1w = pMP1->GetWorldPos();
+                        cv::Mat P3D2w = pMP2->GetWorldPos();
+                        // 如果这对匹配点都靠谱，并且对应的2D特征点也都存在的话，添加PointXYZ顶点
+                        g2o::VertexSBAPointXYZ *vPoint1f = new g2o::VertexSBAPointXYZ();
+                        // 地图点转换到各自相机坐标系下的三维点
+                        // 把顶点转化到最后一帧
+                        cv::Mat P3D1wf = Rcfw * P3D1w + tcfw;
+                        // cv::Mat P3D1c = R1w * P3D1w + t1w;
+                        vPoint1f->setEstimate(Converter::toVector3d(P3D1wf));
+                        vPoint1f->setId(id1f);
+                        // 地图点不优化
+                        vPoint1f->setFixed(true);
+                        optimizer.addVertex(vPoint1f);
+
+                        g2o::VertexSBAPointXYZ *vPoint2f = new g2o::VertexSBAPointXYZ();
+                        cv::Mat P3D2wf = Rmfw * P3D2w + tmfw;
+                        // cv::Mat P3D2c = R2w * P3D2w + t2w;
+                        vPoint2f->setEstimate(Converter::toVector3d(P3D2wf));
+                        vPoint2f->setId(id2f);
+                        vPoint2f->setFixed(true);
+                        optimizer.addVertex(vPoint2f);
+                    }
+                    else
+                        continue;
+                }
+                else
+                    continue;
+
+                // 对匹配关系进行计数
+                nCorrespondences++;
+
+                // Step 4: 添加边（地图点投影到特征点）
+                // 地图点pMP1对应的观测特征点
+                Eigen::Matrix<double, 2, 1> obs1;
+                const cv::KeyPoint &kpUn1 = pKF1->mvKeysUn[i];
+                obs1 << kpUn1.pt.x, kpUn1.pt.y;
+
+
+                const float &invSigmaSquare1 = pKF1->mvInvLevelSigma2[kpUn1.octave];
+                // 添加最后一帧的正向投影边
+                // 把当前帧的位姿转化到最后一帧
+                g2o::EdgeSim3ProjectXYZForCalibr *e12f = new g2o::EdgeSim3ProjectXYZForCalibr(R1f,t1f);
+                // vertex(id2)对应的是pKF2 VertexSBAPointXYZ 类型的三维点
+                e12f->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id2f)));
+                // ? 为什么这里添加的节点的id为0？
+                // 回答：因为vertex(0)对应的是 VertexSim3Expmap 类型的待优化Sim3，其id 为 0
+                e12f->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(0)));
+                e12f->setMeasurement(obs1);
+                // 信息矩阵和这个特征点的可靠程度（在图像金字塔中的图层）有关
+                e12f->setInformation(Eigen::Matrix2d::Identity() * invSigmaSquare1);
+
+                // 使用鲁棒核函数
+                g2o::RobustKernelHuber *rk1f = new g2o::RobustKernelHuber;
+                e12f->setRobustKernel(rk1f);
+                rk1f->setDelta(deltaHuber);
+                optimizer.addEdge(e12f);
+
+
+                // Step 4.2 当前帧地图点投影到闭环候选帧的边 -- 反向投影
+
+                // 地图点pMP2对应的观测特征点
+                Eigen::Matrix<double, 2, 1> obs2;
+                const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[i2];
+                obs2 << kpUn2.pt.x, kpUn2.pt.y;
+
+                float invSigmaSquare2 = pKF2->mvInvLevelSigma2[kpUn2.octave];
+
                 g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = new g2o::EdgeInverseSim3ProjectXYZForCalibr(R2f,t2f);
                 // vertex(id1)对应的是pKF1 VertexSBAPointXYZ 类型的三维点，内部误差公式也不同
                 e21f->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(id1f)));
@@ -4073,109 +4398,66 @@ namespace ORB_SLAM3
                 rk2f->setDelta(deltaHuber);
                 optimizer.addEdge(e21f);
 
-                vpEdges12.push_back(e12);
-                vpEdges21.push_back(e21);
                 vpEdges12f.push_back(e12f);
                 vpEdges21f.push_back(e21f);
-                vnIndexEdge.push_back(i);
-                IdOff += N; //计算每组序号起始值
             }
-            vvpEdges12.push_back(vpEdges12);
-            vvpEdges21.push_back(vpEdges21);
+            IdOff += N; //计算每组序号起始值
+
             vvpEdges12f.push_back(vpEdges12f);
             vvpEdges21f.push_back(vpEdges21f);      
-            vvnIndexEdge.push_back(vnIndexEdge);
         }
 
+        cout<<"参与匹配点共有："<<nCorrespondences<<endl;
         // Optimize!
-        // Step 5：g2o开始优化，先迭代5次
-        optimizer.initializeOptimization();
-        optimizer.optimize(500);
 
-//        cout<<"初步优化后的结果: "<<endl<<Converter::toCvMat(static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0))->estimate())<<endl<<endl;
-        cout<<"匹配点有："<<nCorrespondences<<endl;
-
-
-//        // Check inliers
+       // Check inliers
         int nBad = 0;
-        int nMoreIterations;
-        for(size_t index = 0; index< nNumberOfMergeKF; index++)
+        for(size_t it=0;it<4;it++)
         {
-            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
-            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12f = vvpEdges12f[index];
-            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21f = vvpEdges21f[index];
-
-            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-            int nBadInEach = 0;
-            for (size_t i = 0; i < vpEdges12.size(); i++)
+            vSim3->setEstimate(g2oS12);
+            nBad = 0;
+            // Step 5：g2o开始优化，先迭代10次
+            optimizer.initializeOptimization(0);
+            optimizer.optimize(10);
+            for(size_t index = 0; index< nNumberOfMergeKF; index++)
             {
-                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
-                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
-                g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12[i];
-                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21[i];
-                if (!e12 || !e21 || !e12f || !e21f  )
-                    continue;
+                vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
+                vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
+                vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12f = vvpEdges12f[index];
+                vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21f = vvpEdges21f[index];
 
-                if (e12->chi2() > th2 || e21->chi2() > th2 || e12f->chi2() > th2 || e21f->chi2() > th2)
+                const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
+                for (size_t i = 0; i < vpEdges12f.size(); i++)
                 {
-                    // 正向或反向投影任意一个超过误差阈值就删掉该边
-                    size_t idx = vnIndexEdge[i];
-                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-                    optimizer.removeEdge(e12);
-                    optimizer.removeEdge(e21);
-                    optimizer.removeEdge(e12f);
-                    optimizer.removeEdge(e21f);
-                    vpEdges12[i] = static_cast<g2o::EdgeSim3ProjectXYZForCalibr *>(NULL);
-                    vpEdges21[i] = static_cast<g2o::EdgeInverseSim3ProjectXYZForCalibr *>(NULL);
-                    vpEdges12f[i] = static_cast<g2o::EdgeSim3ProjectXYZForCalibr *>(NULL);
-                    vpEdges21f[i] = static_cast<g2o::EdgeInverseSim3ProjectXYZForCalibr *>(NULL);
-                    // 累计删掉的边 数目
-                    nBad++;
-                    nBadInEach++;
+                    g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
+                    g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
+                    g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12f[i];
+                    g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21f[i];
+                    if (!e12 || !e21 || !e12f || !e21f  )
+                        continue;
+
+                    if (e12->chi2() > th2 || e21->chi2() > th2 || e12f->chi2() > th2 || e21f->chi2() > th2)
+                    {
+                        // 正向或反向投影任意一个超过误差阈值就删掉该边
+                        e12->setLevel(1);
+                        e21->setLevel(1);
+                        e12f->setLevel(1);
+                        e21f->setLevel(1);
+                        nBad++;
+                    }
+                    else
+                    {
+                        e12->setLevel(0);
+                        e21->setLevel(0);
+                        e12f->setLevel(0);
+                        e21f->setLevel(0);
+                    }
                 }
             }
-            // cout<<"每层错误的个数为："<<nBadInEach <<endl;
-            // 如果有误差较大的边被剔除那么说明回环质量并不是非常好,还要多迭代几次;反之就少迭代几次
-            if (nBad > 0)
-                nMoreIterations = 10;
-            else
-                nMoreIterations = 5;
         }
         cout<<"坏点有："<<nBad<<endl;
 
-//        // Optimize again only with inliers
-//        // Step 7：再次g2o优化 剔除后剩下的边
-//        optimizer.initializeOptimization();
-//        optimizer.optimize(nMoreIterations);
-//
-//        // 统计第二次优化之后,这些匹配点中是内点的个数
-//        int nIn = 0;
-//        for(size_t index = 0; index < nNumberOfMergeKF; index++)
-//        {
-//
-//            vector<g2o::EdgeSim3ProjectXYZForCalibr *> &vpEdges12 = vvpEdges12[index];
-//            vector<g2o::EdgeInverseSim3ProjectXYZForCalibr *> &vpEdges21 = vvpEdges21[index];
-//            const vector<MapPoint *> &vpMatches1 = vvpMatches1s[index];
-//            vector<size_t> &vnIndexEdge = vvnIndexEdge[index];
-//            for (size_t i = 0; i < vpEdges12.size(); i++)
-//            {
-//                g2o::EdgeSim3ProjectXYZForCalibr *e12 = vpEdges12[i];
-//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21 = vpEdges21[i];
-//                g2o::EdgeSim3ProjectXYZForCalibr *e12f = vpEdges12[i];
-//                g2o::EdgeInverseSim3ProjectXYZForCalibr *e21f = vpEdges21[i];
-//                if (!e12 || !e21 || !e12f || !e21f)
-//                    continue;
-//
-//                if (e12->chi2() > th2 || e21->chi2() > th2 || e12f->chi2() > th2 || e21f->chi2() > th2)
-//                {
-//                    size_t idx = vnIndexEdge[i];
-//                    // vpMatches1[idx] = static_cast<MapPoint *>(NULL);
-//                }
-//                else
-//                    nIn++;
-//            }
-//        }
+
 //        // Recover optimized Sim3
 //        // Step 8：得到优化后的结果
         g2o::VertexSim3Expmap *vSim3_recov = static_cast<g2o::VertexSim3Expmap *>(optimizer.vertex(0));

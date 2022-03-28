@@ -259,9 +259,9 @@ std::vector<float> Converter::toEuler(const cv::Mat &R)
     }
 
     std::vector<float> v_euler(3);
-    v_euler[0] = x;
-    v_euler[1] = y;
-    v_euler[2] = z;
+    v_euler[0] = x/CV_PI*180;
+    v_euler[1] = y/CV_PI*180;
+    v_euler[2] = z/CV_PI*180;
 
     return v_euler;
 }

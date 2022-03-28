@@ -520,7 +520,7 @@ void KeyFrame::UpdateConnections(bool upParent)
     int nmax=0;
     KeyFrame* pKFmax=NULL;
     // 至少有15个共视地图点
-    int th = 15;
+    int th = 30;
 
     // vPairs记录与其它关键帧共视帧数大于th的关键帧
     // pair<int,KeyFrame*>将关键帧的权重写在前面，关键帧写在后面方便后面排序

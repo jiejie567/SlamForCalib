@@ -3555,12 +3555,12 @@ bool Tracking::NeedNewKeyFrame()
     // Thresholds
     // Step 7.1：设定比例阈值，当前帧和参考关键帧跟踪到点的比例，比例越大，越倾向于增加关键帧
 //    float thRefRatio = 0.75f;
-    float thRefRatio = 0.9f;
+    float thRefRatio = 0.8f;
 
     // 关键帧只有一帧，那么插入关键帧的阈值设置的低一点，插入频率较低
     if(nKFs<2)
 //        thRefRatio = 0.4f;
-        thRefRatio = 0.9f;
+        thRefRatio = 0.8f;
 
     //单目情况下插入关键帧的频率很高    
     if(mSensor==System::MONOCULAR)
@@ -3568,7 +3568,7 @@ bool Tracking::NeedNewKeyFrame()
 
     if(mpCamera2)
 //        thRefRatio = 0.75f;
-        thRefRatio = 0.9f;
+        thRefRatio = 0.85f;
     //单目+IMU情况下如果，匹配内点数目超过350，插入关键帧的频率可以适当降低  
     if(mSensor==System::IMU_MONOCULAR)
     {

@@ -11,26 +11,26 @@ Camera.type: "PinHole"
 
 
 # RGB内参
-Camera.fx: 421.62
-Camera.fy: 421.146
-Camera.cx: 426.558
-Camera.cy: 243.909
+Camera.fx: 422.19354248046875
+Camera.fy: 421.7196044921875
+Camera.cx: 426.55767822265625
+Camera.cy: 243.9090118408203
 
 
 
 
 
 # distortion parameters
-Camera.k1: 0.0
-Camera.k2: 0.0
-Camera.p1: 0.0
-Camera.p2: 0.0
+# Camera.k1: 0.0
+# Camera.k2: 0.0
+# Camera.p1: 0.0
+# Camera.p2: 0.0
 
-#matlab
-# Camera.k1: -0.0494
-# Camera.k2: 0.043
-# Camera.p1: 3.0516e-04
-# Camera.p2: 1.2890e-04
+Camera.k1: -0.0572167
+Camera.k2: 0.0671894
+Camera.p1: -3.21677e-06
+Camera.p2: 0.000561221
+Camera.k3: -0.0216384
 
 # Camera resolution
 Camera.width: 848
@@ -41,9 +41,9 @@ Camera.fps: 15
 
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
-Camera.bf: 95.0
+Camera.bf: 40.0
 # Close/Far threshold. Baseline times.
-ThDepth: 10.0
+ThDepth: 40.0
 Stereo.b: 0.0745
 
 # Depth map values factor

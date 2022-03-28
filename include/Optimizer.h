@@ -118,9 +118,10 @@ public:
     void static InertialOptimization(Map *pMap, Eigen::Matrix3d &Rwg, double &scale);
 
     static int OptimizeSim3ForCalibr(const vector<KeyFrame *> &vpKF1s, const vector<KeyFrame *> &vpKF2s,
-                        const  vector<vector<MapPoint *>> &vvpMatches1s,
+                        vector<vector<MapPoint *>> &vvpMatches1s,
                           g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
-    static int OptimizeSim3FirstFinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, const vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
+    static int OptimizeSim3FinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, vector<vector<MapPoint *>> &vvpMatches1s, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
+    static int OptimizeSim3FirstFinalForCalibr(const vector<KeyFrame *> &vpKF1s, const cv::Mat &FinalPose1, const vector<KeyFrame *> &vpKF2s, const cv::Mat &FinalPose2, vector<vector<MapPoint *>> &vvpMatches1s, vector<vector<MapPoint *>> &vvpMatches1sFinal, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
 };
 
 } //namespace ORB_SLAM3
