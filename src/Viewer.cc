@@ -133,9 +133,7 @@ void Viewer::Run()
 {
     mbFinished = false;
     mbStopped = false;
-//    cout<<"before create\n";
     pangolin::CreateWindowAndBind("ORB-SLAM3 "+mstrCamName + " Map Viewer",1024,768);
-//    cout<<"after create\n";
 
     // 3D Mouse handler requires depth testing to be enabled
     glEnable(GL_DEPTH_TEST);
@@ -172,9 +170,7 @@ void Viewer::Run()
     Ow.SetIdentity();
     pangolin::OpenGlMatrix Twwp; // Oriented with g in the z axis, but y and x from camera
     Twwp.SetIdentity();
-    cout<<"before cv window\n";
 //    cv::namedWindow("ORB-SLAM3 "+mstrCamName + " Current Frame");
-    cout<<"after cv window\n";
     bool bFollow = true;
     bool bLocalizationMode = false;
     bool bStepByStep = false;
