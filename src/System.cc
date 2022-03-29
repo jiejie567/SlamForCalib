@@ -49,6 +49,7 @@ System::System(const string &strVocFile,                //词袋文件所在路�
                const eSensor sensor,                    //传感器类型 
                const bool bUseViewer,                   //是否使用可视化界面 
                const int initFr,                        //initFr表示初始化帧的id,开始设置为0
+               const string &strCamName,                //相机名字
                const string &strSequence,               //序列名,在跟踪线程和局部建图线程用得到
                const string &strLoadingFile             //看起来作者貌似想加地图重载功能的一个参数
                ):
@@ -164,7 +165,7 @@ System::System(const string &strVocFile,                //词袋文件所在路�
     // 创建并开启显示线程
     if(bUseViewer)
     {
-        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
+        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker, strSettingsFile, strCamName);
         mptViewer = new thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
         mpLoopCloser->mpViewer = mpViewer;

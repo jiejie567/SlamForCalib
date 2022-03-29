@@ -25,9 +25,9 @@
 
 namespace ORB_SLAM3
 {
-
-Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath):
-    both(false), mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),
+mutex Viewer::mMutexCVImage;
+Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath, const string &strCamName):
+    both(false), mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),mstrCamName(strCamName),
     mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
@@ -58,7 +58,8 @@ bool Viewer::ParseViewerParamFile(cv::FileStorage &fSettings)
     if(fps<1)
         fps=30;
     mT = 1e3/fps;
-
+    if(mstrCamName==std::string())
+        mT /= 2;
     cv::FileNode node = fSettings["Camera.width"];
     if(!node.empty())
     {
@@ -132,8 +133,9 @@ void Viewer::Run()
 {
     mbFinished = false;
     mbStopped = false;
-
-    pangolin::CreateWindowAndBind("ORB-SLAM3: Map Viewer",1024,768);
+//    cout<<"before create\n";
+    pangolin::CreateWindowAndBind("ORB-SLAM3 "+mstrCamName + " Map Viewer",1024,768);
+//    cout<<"after create\n";
 
     // 3D Mouse handler requires depth testing to be enabled
     glEnable(GL_DEPTH_TEST);
@@ -170,9 +172,9 @@ void Viewer::Run()
     Ow.SetIdentity();
     pangolin::OpenGlMatrix Twwp; // Oriented with g in the z axis, but y and x from camera
     Twwp.SetIdentity();
-
-    cv::namedWindow("ORB-SLAM3: Current Frame");
-
+    cout<<"before cv window\n";
+//    cv::namedWindow("ORB-SLAM3 "+mstrCamName + " Current Frame");
+    cout<<"after cv window\n";
     bool bFollow = true;
     bool bLocalizationMode = false;
     bool bStepByStep = false;
@@ -271,9 +273,10 @@ void Viewer::Run()
         else{
             toShow = im;
         }
-
-        cv::imshow("ORB-SLAM3: Current Frame",toShow);
+        mMutexCVImage.lock();
+        cv::imshow("ORB-SLAM3 "+mstrCamName + " Current Frame",toShow);
         cv::waitKey(mT);
+        mMutexCVImage.unlock();
 
         if(menuReset)
         {

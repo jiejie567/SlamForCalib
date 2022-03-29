@@ -48,3 +48,6 @@ cmake-build-debug/
 *.osa
 .vscode/settings.json
 
+Examples/ROS/ORB_SLAM3/MonoAndMono
+Examples/ROS/ORB_SLAM3/MonoAndRGBD
+Examples/ROS/ORB_SLAM3/RGBDAndRGBD

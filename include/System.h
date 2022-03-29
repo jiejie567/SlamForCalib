@@ -112,7 +112,8 @@ public:
      * @param[out] strSequence             //序列名,在跟踪线程和局部建图线程用得到 
      * @param[in] strLoadingFile           //看起来作者貌似想加地图重载功能的一个参数
      */
-    System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true, const int initFr = 0, const string &strSequence = std::string(), const string &strLoadingFile = std::string());
+    System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true,
+            const int initFr = 0,const string &strCamName = std::string(),const string &strSequence = std::string(), const string &strLoadingFile = std::string());
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.

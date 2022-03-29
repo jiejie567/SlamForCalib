@@ -58,8 +58,8 @@ int main(int argc, char **argv)
     }    
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM3::System SLAM1(argv[1],argv[2],ORB_SLAM3::System::RGBD,true);
-    ORB_SLAM3::System SLAM2(argv[1],argv[3],ORB_SLAM3::System::RGBD,false);
+    ORB_SLAM3::System SLAM1(argv[1],argv[2],ORB_SLAM3::System::RGBD,true,0,"Camera 1");
+    ORB_SLAM3::System SLAM2(argv[1],argv[3],ORB_SLAM3::System::RGBD,true,0,"Camera 2");
     
 
     ImageGrabber igb(&SLAM1,&SLAM2);
