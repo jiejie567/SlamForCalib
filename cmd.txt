@@ -1,1 +1,2 @@
-rosrun ORB_SLAM3 doubleRGBD ./Vocabulary/ORBvoc.txt ./Examples/RGB-D/RealSense_D455_1.yaml ./Examples/RGB-D/RealSense_D455_2.yaml
+rosrun ORB_SLAM3 RGBDAndRGBD /home/bit-hit/orb3ForCalibr_WS/src/ORB_SLAM3_for_calibr/Vocabulary/ORBvoc.txt  /home/bit-hit/orb3ForCalibr_WS/src/ORB_SLAM3_for_calibr/Examples/RGB-D/RealSense_D455_B2.yaml /home/bit-hit/orb3ForCalibr_WS/src/ORB_SLAM3_for_calibr/Examples/RGB-D/RealSense_D455_A2.yaml
+

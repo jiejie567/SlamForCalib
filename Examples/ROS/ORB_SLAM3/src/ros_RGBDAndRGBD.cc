@@ -37,12 +37,10 @@ using namespace std;
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM3::System* pSLAM1,ORB_SLAM3::System* pSLAM2):mpSLAM1(pSLAM1),mpSLAM2(pSLAM2){}
+    ImageGrabber(ORB_SLAM3::System* pSLAM):mpSLAM(pSLAM){}
 
-    void GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgD1, const sensor_msgs::ImageConstPtr& msgRGB2,const sensor_msgs::ImageConstPtr& msgD2);
-
-    ORB_SLAM3::System* mpSLAM1;
-    ORB_SLAM3::System* mpSLAM2;
+    void GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgD1);
+    ORB_SLAM3::System* mpSLAM;
 };
 
 int main(int argc, char **argv)
@@ -60,23 +58,24 @@ int main(int argc, char **argv)
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM3::System SLAM1(argv[1],argv[2],ORB_SLAM3::System::RGBD,true,0,"Camera 1");
     ORB_SLAM3::System SLAM2(argv[1],argv[3],ORB_SLAM3::System::RGBD,true,0,"Camera 2");
-    
 
-    ImageGrabber igb(&SLAM1,&SLAM2);
 
+    ImageGrabber igb(&SLAM1);
+    ImageGrabber igb2(&SLAM2);
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera/color/image_raw", 1000);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub1(nh, "/camera/aligned_depth_to_color/image_raw", 1000);
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera2/color/image_raw", 1000);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub2(nh, "/camera2/aligned_depth_to_color/image_raw", 1000);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera3/color/image_raw", 1000);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub1(nh, "/camera3/aligned_depth_to_color/image_raw", 1000);
+   message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera2/color/image_raw", 1000);
+   message_filters::Subscriber<sensor_msgs::Image> depth_sub2(nh, "/camera2/aligned_depth_to_color/image_raw", 1000);
     // cout<<"建立订阅"<<endl;
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::Image, sensor_msgs::Image> sync_pol;
-    message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub1,depth_sub1,rgb_sub2,depth_sub2);
-    sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD,&igb,_1,_2,_3,_4));
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
+    message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub1,depth_sub1);
+    sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD,&igb,_1,_2));
+   message_filters::Synchronizer<sync_pol> sync2(sync_pol(10), rgb_sub2,depth_sub2);
+   sync2.registerCallback(boost::bind(&ImageGrabber::GrabRGBD,&igb2,_1,_2));
 
     ros::spin();
-    // cout<<"ros::spin结束"<<endl;
     // Stop all threads
     SLAM1.Shutdown();
     SLAM2.Shutdown();
@@ -85,13 +84,13 @@ int main(int argc, char **argv)
     // SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
     cout<<"SLAM已关闭"<<endl;
     ros::shutdown();
-    SLAM1.MergeSLAMs(&SLAM2);
+    SLAM2.MergeSLAMs(&SLAM1);
     
     cout<<"节点结束"<<endl;
     return 0;
 }
 
-void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgD1,const sensor_msgs::ImageConstPtr& msgRGB2,const sensor_msgs::ImageConstPtr& msgD2)
+void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sensor_msgs::ImageConstPtr& msgD1)
 {
     // Copy the ros image message to cv::Mat.
     cv_bridge::CvImageConstPtr cv_ptrRGB1;
@@ -115,31 +114,9 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr& msgRGB1,const sens
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-        // Copy the ros image message to cv::Mat.
-    cv_bridge::CvImageConstPtr cv_ptrRGB2;
-    try
-    {
-        cv_ptrRGB2 = cv_bridge::toCvShare(msgRGB2);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
 
-    cv_bridge::CvImageConstPtr cv_ptrD2;
-    try
-    {
-        cv_ptrD2 = cv_bridge::toCvShare(msgD2);
-    }
-    catch (cv_bridge::Exception& e)
-    {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
-    
-    mpSLAM1->TrackRGBD(cv_ptrRGB1->image,cv_ptrD1->image,cv_ptrRGB1->header.stamp.toSec());
-    mpSLAM2->TrackRGBD(cv_ptrRGB2->image,cv_ptrD2->image,cv_ptrRGB2->header.stamp.toSec());
+    mpSLAM->TrackRGBD(cv_ptrRGB1->image,cv_ptrD1->image,cv_ptrRGB1->header.stamp.toSec());
 }
+
 
 

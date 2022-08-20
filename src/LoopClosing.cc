@@ -411,9 +411,9 @@ bool LoopClosing::RunMerge()
 //                    g2o::Sim3 gFinalTFTrans = (gSmw_f.inverse())*mSold_new*gScw_f;
 //                    cout<<"两个地图Tc2c1以第一帧的关系: "<<endl<<Converter::toCvMatWithoutS(mSold_new.inverse())<<endl<<endl;
                     auto result = Converter::toCvMatWithoutS(mSold_new.inverse());
-                    cout<<"两个地图Tc2c1以第一帧的关系: "<<result<<endl<<endl;
+                    cout<<"The transformation between camera 1 and 2 Tc1c2 : "<<result<<endl<<endl;
                     vector<float> EulerResult = Converter::toEuler(result.colRange(0,3).rowRange(0,3));
-                    cout<<"以欧拉角表示: "<<endl<<"x: "<< EulerResult[0]<<endl<<"y: "<< EulerResult[1]<< endl << "z: "<< EulerResult[2]<<endl;
+                    cout<<"Euler form: "<<endl<<"x: "<< EulerResult[0]<<endl<<"y: "<< EulerResult[1]<< endl << "z: "<< EulerResult[2]<<endl;
                     vEulerX.push_back(EulerResult[0]);
                     vEulerY.push_back(EulerResult[1]);
                     vEulerZ.push_back(EulerResult[2]);

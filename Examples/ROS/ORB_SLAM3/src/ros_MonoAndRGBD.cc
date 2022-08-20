@@ -66,9 +66,9 @@ int main(int argc, char **argv)
 
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera/color/image_raw", 100);
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera2/color/image_raw", 100);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub2(nh, "/camera2/aligned_depth_to_color/image_raw", 100);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub1(nh, "/camera2/color/image_raw", 100);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub2(nh, "/camera3/color/image_raw", 100);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub2(nh, "/camera3/aligned_depth_to_color/image_raw", 100);
     cout<<"建立订阅"<<endl;
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image,sensor_msgs::Image> sync_pol;
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub1, rgb_sub2, depth_sub2);

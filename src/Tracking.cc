@@ -4745,7 +4745,7 @@ void Tracking::ChangeCalibration(const string &strSettingPath)
     mbf = fSettings["Camera.bf"];
 
     //做标记,表示在初始化帧的时候将会是第一个帧,要对它进行一些特殊的初始化操作
-    Frame::mbInitialComputations = true;
+//    Frame::mbInitialComputations = true;
 }
 
 void Tracking::InformOnlyTracking(const bool &flag)

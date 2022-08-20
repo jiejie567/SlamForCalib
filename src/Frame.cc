@@ -40,9 +40,9 @@ long unsigned int Frame::nNextId=0;
 //是否要进行初始化操作的标志
 //这里给这个标志置位的操作是在最初系统开始加载到内存的时候进行的，下一帧就是整个系统的第一帧，所以这个标志要置位
 bool Frame::mbInitialComputations=true;
-float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
-float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
-float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
+//float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
+//float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
+//float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
 
 //For stereo fisheye matching
 cv::BFMatcher Frame::BFmatcher = cv::BFMatcher(cv::NORM_HAMMING);
@@ -185,6 +185,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
 
         fx = K.at<float>(0,0);
+        cout<<"fx----------------"<<fx<<endl;
         fy = K.at<float>(1,1);
         cx = K.at<float>(0,2);
         cy = K.at<float>(1,2);
@@ -193,7 +194,8 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
         invfy = 1.0f/fy;
 
 		//特殊的初始化过程完成，标志复位
-        mbInitialComputations=false;
+//		if(nNextId>20)
+//            mbInitialComputations=false;
     }
 
     // 双目相机基线长度
@@ -301,8 +303,9 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
         invfx = 1.0f/fx;
         invfy = 1.0f/fy;
 
-		//特殊的初始化过程完成，标志复位
-        mbInitialComputations=false;
+		//特殊的初始化过程完成，
+//        if(nNextId>20)
+//            mbInitialComputations=false;
     }
 
     // 计算假想的基线长度 baseline= mbf/fx
@@ -332,6 +335,8 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
      mImuCalib(ImuCalib), mpImuPreintegrated(NULL),mpPrevFrame(pPrevF),mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbImuPreintegrated(false), mpCamera(pCamera),
      mpCamera2(nullptr)
 {
+    cout<<112<<endl;
+
     // Frame ID
 	// Step 1 帧的ID 自增
     mnId=nNextId++;
@@ -409,7 +414,8 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
         invfy = 1.0f/fy;
 
 		//特殊的初始化过程完成，标志复位
-        mbInitialComputations=false;
+//        if(nNextId>20)
+//            mbInitialComputations=false;
     }
 
     //计算 basline
@@ -1394,8 +1400,8 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
         cy = K.at<float>(1,2);
         invfx = 1.0f/fx;
         invfy = 1.0f/fy;
-
-        mbInitialComputations=false;
+//        if(nNextId>20)
+//            mbInitialComputations=false;
     }
 
     mb = mbf / fx;
